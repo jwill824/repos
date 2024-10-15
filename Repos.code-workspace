@@ -1,8 +1,17 @@
 {
-	"folders": [
-		{
-			"path": "."
-		}
-	],
-	"settings": {}
+  "folders": [
+    {
+      "path": "."
+    },
+    {
+      "path": "crown"
+    },
+    {
+      "path": "leadingedje"
+    },
+    {
+      "path": "personal"
+    }
+  ],
+  "settings": {}
 }

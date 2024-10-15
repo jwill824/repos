@@ -1,2 +1,2 @@
 #!/bin/sh
-commitlint --config /workspaces/Repos/commitlint.config.js --edit $1
+commitlint --config /workspaces/repos/commitlint.config.js --edit $1

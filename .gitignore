@@ -1,5 +1,24 @@
-git-new-branch.sh
-repo_list.json
-repo_config.json
-commitlint.config.js
-.venv
+# Ignore everything
+*
+
+# But not these files...
+!.gitignore
+!README.md
+!Repos.code-workspace
+
+# ...and not these folders
+!.devcontainer/
+
+# Ignore everything in .devcontainer except specific files
+.devcontainer/*
+!.devcontainer/devcontainer.json
+!.devcontainer/setup.sh
+!.devcontainer/commit-msg
+!.devcontainer/pre-push
+
+# Ignore the repo config file (contains sensitive information)
+.devcontainer/repo_config.json
+.devcontainer/repo_list.json
+
+# Re-ignore any potential .git directories
+**/.git

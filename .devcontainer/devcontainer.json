@@ -1,5 +1,5 @@
 {
-    "name": "Crown",
+    "name": "Developer Workspace",
     "image": "mcr.microsoft.com/vscode/devcontainers/base:ubuntu-22.04",
     "features": {
         "ghcr.io/devcontainers/features/terraform:1": {
@@ -51,5 +51,5 @@
         "TF_LOG": "info",
         "TF_LOG_PATH": ".terraform_devcontainer.log"
     },
-    "postCreateCommand": "bash /workspaces/Repos/.devcontainer/setup.sh"
+    "postCreateCommand": "bash /workspaces/repos/.devcontainer/setup.sh"
 }
