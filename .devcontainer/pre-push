@@ -1,0 +1,17 @@
+#!/bin/bash
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+if [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; then
+    echo "Fetching latest changes from origin..."
+    git fetch origin
+
+    BASE_BRANCH="origin/$BRANCH"
+    if ! git rev-parse --verify $BASE_BRANCH &>/dev/null; then
+        echo "Remote branch $BASE_BRANCH does not exist. Skipping rebase."
+    else
+        echo "Attempting to rebase onto $BASE_BRANCH..."
+        if ! git rebase $BASE_BRANCH; then
+            echo "Rebase failed. Aborting rebase and continuing with push."
+            git rebase --abort
+        fi
+    fi
+fi
