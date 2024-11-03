@@ -1,6 +1,6 @@
 {
     "name": "Developer Workspace",
-    "image": "mcr.microsoft.com/vscode/devcontainers/base:ubuntu-22.04",
+    "image": "mcr.microsoft.com/devcontainers/java:1-17-bullseye",
     "features": {
         "ghcr.io/devcontainers/features/terraform:1": {
             "version": "1.7.5",
@@ -18,8 +18,8 @@
             "dockerDashComposeVersion": "v2"
         },
         "olliglorioso/git-completion/git-completion": "latest",
-		"ghcr.io/devcontainers-contrib/features/actionlint:1": {},
-		"ghcr.io/devcontainers/features/docker-in-docker": {},
+        "ghcr.io/devcontainers-contrib/features/actionlint:1": {},
+        "ghcr.io/devcontainers/features/docker-in-docker": {},
         "ghcr.io/devcontainers/features/python:1": {
             "version": "3.11"
         }
@@ -34,7 +34,11 @@
                 "GitHub.vscode-github-actions",
                 "Postman.postman-for-vscode",
                 "MS-vsliveshare.vsliveshare",
-                "GitHub.copilot"
+                "GitHub.copilot",
+                "wholroyd.jinja",
+                "vscjava.vscode-java-pack",
+                "tonybaloney.vscode-pets",
+                "spmeesseman.vscode-taskexplorer",
             ],
             "settings": {
                 "terraform.languageServer": {

@@ -1,5 +1,87 @@
 #!/bin/bash
 
+# Update the required files check to include prepare-commit-msg:
+# Git hook files
+commit_msg_hook="/workspaces/repos/.devcontainer/commit-msg"
+pre_push_hook="/workspaces/repos/.devcontainer/pre-push"
+prepare_commit_msg_hook="/workspaces/repos/.devcontainer/prepare-commit-msg"
+
+# Check if required files exist
+for file in "$repo_config_file" "$commit_msg_hook" "$pre_push_hook" "$prepare_commit_msg_hook"; do
+    if [ ! -f "$file" ]; then
+        echo "Error: Required file not found: $file"
+        exit 1
+    fi
+done
+
+setup_env() {
+    local env_file="/workspaces/repos/.devcontainer/.env"
+    local env_example="/workspaces/repos/.devcontainer/.env.example"
+    
+    echo "Checking for .env files..."
+    
+    # Create .env.example if it doesn't exist
+    if [ ! -f "$env_example" ]; then
+        echo "Creating .env.example template..."
+        echo "# Anthropic API Key for AI-powered commit messages" > "$env_example"
+        echo "ANTHROPIC_API_KEY=your_api_key_here" >> "$env_example"
+        echo "✓ Created .env.example template"
+    fi
+    
+    # Create .env if it doesn't exist
+    if [ ! -f "$env_file" ]; then
+        echo "Creating .env file..."
+        cp "$env_example" "$env_file"
+        echo "⚠️ Created .env file. Please update it with your Anthropic API key"
+    fi
+    
+    # Source the .env file
+    if [ -f "$env_file" ]; then        
+        echo "Sourcing .env file..."
+        set -a
+        source "$env_file"
+        set +a
+        
+        echo "Verifying environment variable..."
+        if [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo "✓ ANTHROPIC_API_KEY is set in environment"
+            git config --global ai.apikey "$ANTHROPIC_API_KEY"
+            echo "✓ Configured git with API key"
+            
+            # Export the variable to ensure it's available in child processes
+            export ANTHROPIC_API_KEY
+        else
+            echo "⚠️ ANTHROPIC_API_KEY not found in environment after sourcing"
+        fi
+    else
+        echo "⚠️ .env file not found at $env_file"
+    fi
+    
+    # Verify git config
+    echo "Verifying git config..."
+    git config --get ai.apikey || echo "⚠️ No API key found in git config"
+}
+
+# Add this to your ~/.bashrc or similar
+add_env_to_bashrc() {
+    local env_file="/workspaces/repos/.devcontainer/.env"
+    local bashrc="$HOME/.bashrc"
+    
+    # Add source command to .bashrc if it doesn't exist
+    if ! grep -q "source $env_file" "$bashrc"; then
+        echo "# Source devcontainer environment variables" >> "$bashrc"
+        echo "if [ -f $env_file ]; then" >> "$bashrc"
+        echo "    set -a" >> "$bashrc"
+        echo "    source $env_file" >> "$bashrc"
+        echo "    set +a" >> "$bashrc"
+        echo "fi" >> "$bashrc"
+        echo "✓ Added environment sourcing to .bashrc"
+    fi
+}
+
+setup_env
+add_env_to_bashrc
+
 # Function to add a directory as safe
 add_safe_directory() {
     git config --global --add safe.directory "$1"
@@ -15,6 +97,7 @@ repo_config_file="/workspaces/repos/.devcontainer/repo_config.json"
 # Git hook files
 commit_msg_hook="/workspaces/repos/.devcontainer/commit-msg"
 pre_push_hook="/workspaces/repos/.devcontainer/pre-push"
+prepare_commit_msg_hook="/workspaces/repos/.devcontainer/prepare-commit-msg"
 
 # Check if required files exist
 for file in "$repo_config_file" "$commit_msg_hook" "$pre_push_hook"; do
@@ -88,6 +171,8 @@ setup_global_git_config() {
 }
 
 # Function to set up a repository
+# Modify the setup_repo function to include the prepare-commit-msg hook:
+# Update the setup_repo function:
 setup_repo() {
     local repo_root=$1
     local git_email=$2
@@ -103,17 +188,17 @@ setup_repo() {
 
     # Copy git hooks
     mkdir -p "$repo_root/.git/hooks"
-    echo "Copying commit-msg hook from $commit_msg_hook to $repo_root/.git/hooks/commit-msg"
+    echo "Copying git hooks..."
     cp "$commit_msg_hook" "$repo_root/.git/hooks/commit-msg"
-    echo "Copying pre-push hook from $pre_push_hook to $repo_root/.git/hooks/pre-push"
     cp "$pre_push_hook" "$repo_root/.git/hooks/pre-push"
-    chmod 755 "$repo_root/.git/hooks/commit-msg" "$repo_root/.git/hooks/pre-push"
+    cp "$prepare_commit_msg_hook" "$repo_root/.git/hooks/prepare-commit-msg"
+    
+    chmod 755 "$repo_root/.git/hooks/commit-msg" \
+              "$repo_root/.git/hooks/pre-push" \
+              "$repo_root/.git/hooks/prepare-commit-msg"
     
     echo "Verifying hooks and permissions:"
     ls -l "$repo_root/.git/hooks"
-    
-    echo "Content of commit-msg hook:"
-    cat "$repo_root/.git/hooks/commit-msg"
     
     echo "Git config and hooks set up for $repo_root"
 
@@ -182,6 +267,7 @@ echo "]" >> "$repo_list_file"
 
 # Print all safe directories for verification
 echo "All safe directories:"
+git config --global --add safe.directory /workspaces/repos
 git config --global --get-all safe.directory
 
 echo "Repository paths have been saved to $repo_list_file"
@@ -204,7 +290,20 @@ source $VENV_PATH/bin/activate
 
 # Install any Python packages you commonly use
 pip install --upgrade pip
-pip install pytest black flake8
+pip install pytest black flake8 aiohttp
+
+# Add Anthropic API key configuration if not already set
+if [ -z "$(git config --global --get ai.apikey)" ]; then
+    # Check if ANTHROPIC_API_KEY environment variable exists
+    if [ -n "$ANTHROPIC_API_KEY" ]; then
+        git config --global ai.apikey "$ANTHROPIC_API_KEY"
+        echo "Configured Anthropic API key from environment variable"
+    else
+        echo "⚠️ Note: For AI-powered commit messages, please set your Anthropic API key:"
+        echo "    Either set ANTHROPIC_API_KEY environment variable"
+        echo "    Or run: git config --global ai.apikey 'your-api-key'"
+    fi
+fi
 
 echo "Workspace setup complete!"
 echo "You can now use 'git new' to create a new branch following the conventional commit pattern."
