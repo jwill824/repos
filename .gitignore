@@ -15,6 +15,9 @@
 !.devcontainer/setup.sh
 !.devcontainer/commit-msg
 !.devcontainer/pre-push
+!.devcontainer/prepare-commit-msg
+!.devcontainer/prepare-commit-msg.py
+!.devcontainer/.env.example
 
 # Ignore the repo config file (contains sensitive information)
 .devcontainer/repo_config.json
