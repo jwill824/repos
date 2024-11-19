@@ -18,10 +18,7 @@
 !.devcontainer/prepare-commit-msg
 !.devcontainer/prepare-commit-msg.py
 !.devcontainer/.env.example
-
-# Ignore the repo config file (contains sensitive information)
-.devcontainer/repo_config.json
-.devcontainer/repo_list.json
+!.devcontainer/git-new-branch.sh
 
 # Re-ignore any potential .git directories
 **/.git

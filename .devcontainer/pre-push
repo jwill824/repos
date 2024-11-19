@@ -17,18 +17,42 @@ if [ -z "$default_branch" ]; then
     exit 0
 fi
 
+# Function to check if squash is requested
+# Returns "manual" if message exists before [squash]
+# Returns "ai" if only [squash] exists
+should_squash() {
+    commit_messages=$(git log $default_branch..$current_branch --pretty=%B)
+    for msg in $commit_messages; do
+        if [[ $msg =~ \[squash\] ]]; then
+            # Check if there's any text before [squash]
+            message_before=$(echo "$msg" | sed 's/\[squash\].*//' | tr -d '[:space:]')
+            if [ -n "$message_before" ]; then
+                # There's a message before [squash]
+                echo "manual:$(echo "$msg" | sed 's/\[squash\].*//')"
+                return 0
+            else
+                # Only [squash] found
+                echo "ai"
+                return 0
+            fi
+        fi
+    done
+    return 1
+}
+
 # Check if we're on a feature branch
-if [[ $current_branch == feature/* ]]; then
+if [[ $current_branch != master && $current_branch != development ]]; then
     echo "On feature branch: $current_branch"
     
-    # Check if there are any commits to squash
+    # Check if there are any commits to potentially squash
     commit_count=$(git rev-list --count $default_branch..$current_branch)
     
-    if [ "$commit_count" -gt 1 ]; then
-        echo "Multiple commits detected ($commit_count commits). Preparing to squash..."
-        
-        # Store the current commit message
-        current_msg=$(git log -1 --pretty=%B)
+    # Get squash type and potential message
+    squash_result=$(should_squash)
+    squash_status=$?
+    
+    if [ "$commit_count" -gt 1 ] && [ $squash_status -eq 0 ]; then
+        echo "Multiple commits detected ($commit_count commits) and squash tag found. Preparing to squash..."
         
         # Get the merge base
         merge_base=$(git merge-base $default_branch HEAD)
@@ -36,11 +60,35 @@ if [[ $current_branch == feature/* ]]; then
         # Perform the squash
         git reset --soft "$merge_base"
         
-        # Create a new commit with a meaningful message
-        echo "Creating squashed commit..."
-        git commit -m "feat: $current_msg
-
-This commit squashes $commit_count commits from branch '$current_branch'"
+        # Handle manual vs AI message
+        if [[ $squash_result == manual:* ]]; then
+            # Use the message that was before [squash]
+            manual_msg="${squash_result#manual:}"
+            echo "Using provided commit message"
+            git commit -m "$manual_msg"
+        else
+            # Use AI to generate message
+            echo "Generating AI commit message..."
+            temp_msg_file=$(mktemp)
+            PYTHON_PATH="/workspaces/repos/.venv/bin/python3"
+            
+            $PYTHON_PATH /workspaces/repos/.devcontainer/prepare-commit-msg.py "$temp_msg_file"
+            
+            if [ $? -eq 0 ] && [ -s "$temp_msg_file" ]; then
+                echo "Using AI-generated commit message"
+                cat "$temp_msg_file" | git commit -F -
+                rm "$temp_msg_file"
+            else
+                echo "AI message generation failed, falling back to default construction"
+                rm "$temp_msg_file"
+                
+                # Fallback to combining commit messages
+                commit_messages=$(git log $default_branch..$current_branch --pretty=format:"%s" | sort -r)
+                commit_type=$(echo "$commit_messages" | head -n1 | grep -o '^[a-z]\+:' || echo "feat:")
+                consolidated_msg=$(echo "$commit_messages" | sed -e 's/^[a-z]\+: //' -e 's/\[squash\]//g' | tr '\n' ';' | sed 's/;/, /g' | sed 's/, $//')
+                echo -e "${commit_type} ${consolidated_msg}\n\nSquashed ${commit_count} commits from '${current_branch}'" | git commit -F -
+            fi
+        fi
         
         # Force push the squashed commit
         echo "Force pushing squashed commit..."
@@ -49,7 +97,7 @@ This commit squashes $commit_count commits from branch '$current_branch'"
         echo "Successfully squashed and pushed commits!"
         exit 0
     else
-        echo "Only one commit found. No need to squash."
+        echo "No squash requested or only one commit found. Proceeding with normal push..."
         exit 0
     fi
 fi
