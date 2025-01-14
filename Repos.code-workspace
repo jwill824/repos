@@ -1,27 +1,14 @@
 {
   "folders": [
     {
-      "path": ".",
-      "settings": {
-        "files.exclude": {
-          "crown": true,
-          "leadingedje": true,
-          "personal": true
-        }
-      }
+      "path": "."
+    },
+    {
+      "path": "leadingedje"
     },
     {
       "path": "personal"
     }
   ],
-  "settings": {
-    "git.autoRepositoryDetection": "subFolders",
-    "git.detectSubmodules": true,
-    "git.ignoreSubmodules": false,
-    "git.repositoryScanMaxDepth": 2,
-    "git.decorations.enabled": true,
-    "scm.defaultViewMode": "tree",
-    "workbench.editor.decorations.colors": true,
-    "workbench.editor.decorations.badges": true
-  }
+  "settings": {}
 }

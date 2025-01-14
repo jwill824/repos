@@ -37,8 +37,10 @@ validate_requirements() {
         fi
     done
     
-    # Check required commands
-    local required_commands=("git" "jq" "npm" "python")
+    # Check required commands (only the ones needed before installation steps)
+    local required_commands=(
+        "git" "jq" "npm" "python" "node" "npx"
+    )
     for cmd in "${required_commands[@]}"; do
         if ! command -v "$cmd" &> /dev/null; then
             log_error "Required command not found: $cmd"
@@ -46,7 +48,7 @@ validate_requirements() {
         fi
     done
     
-    log_success "All requirements validated"
+    log_success "All initial requirements validated"
 }
 
 setup_environment() {
@@ -116,6 +118,18 @@ setup_git_config() {
         cp "$DEVCONTAINER_DIR/$hook" "$hooks_dir/"
         chmod 755 "$hooks_dir/$hook"
     done
+
+    # Install gh cli
+    # https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+    (type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)) \
+        && sudo mkdir -p -m 755 /etc/apt/keyrings \
+            && out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+            && cat $out | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+        && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+        && sudo apt update \
+        && sudo apt install gh -y
+
     
     log_success "Git config and hooks set up for $repo_root"
 }
@@ -200,6 +214,104 @@ setup_python_environment() {
     log_success "Python environment configured"
 }
 
+setup_ruby_environment() {
+    log_info "Setting up Ruby environment..."
+
+    # Update package list
+    sudo apt-get update
+
+    # Install Ruby and development tools
+    sudo apt-get install -y ruby-full build-essential zlib1g-dev
+
+    # Configure gem installation path
+    if ! grep -q "export GEM_HOME=\"\$HOME/.gems\"" ~/.bashrc; then
+        echo '# Install Ruby Gems to ~/.gems' >> ~/.bashrc
+        echo 'export GEM_HOME="$HOME/.gems"' >> ~/.bashrc
+        echo 'export PATH="$HOME/.gems/bin:$PATH"' >> ~/.bashrc
+    fi
+
+    # Load the new environment variables
+    export GEM_HOME="$HOME/.gems"
+    export PATH="$HOME/.gems/bin:$PATH"
+
+    # Create the gems directory if it doesn't exist
+    mkdir -p "$HOME/.gems"
+
+    # Install Jekyll and Bundler without sudo
+    gem install jekyll bundler
+
+    log_success "Ruby environment configured"
+}
+
+setup_testing_environment() {
+    log_info "Setting up testing environment..."
+
+    # Install system dependencies for Playwright/Chrome
+    sudo apt-get update && sudo apt-get install -y \
+        libgbm-dev \
+        libatk1.0-0 \
+        libatk-bridge2.0-0 \
+        libcups2 \
+        libdrm2 \
+        libxkbcommon0 \
+        libxcomposite1 \
+        libxdamage1 \
+        libxfixes3 \
+        libxrandr2 \
+        libgbm1 \
+        libasound2 \
+        chromium \
+        fonts-liberation \
+        libappindicator3-1 \
+        libnss3 \
+        libxss1 \
+        lsb-release \
+        xdg-utils
+
+    # Install Node.js testing dependencies
+    npm install -g \
+        @testing-library/jest-dom \
+        @testing-library/dom \
+        jest \
+        jest-environment-jsdom \
+        lighthouse \
+        pixelmatch \
+        playwright \
+        pngjs
+
+    # Install Playwright browsers
+    npx playwright install chromium
+
+    # Install additional Ruby gems for testing
+    gem install \
+        html-proofer \
+        webrick \
+        nokogiri
+
+    log_success "Testing environment set up successfully"
+}
+
+setup_resume_project() {
+    log_info "Setting up resume project..."
+    
+    local project_dir="$WORKSPACE_ROOT/personal/resume"
+    
+    # Create test directories if they don't exist
+    mkdir -p "$project_dir/tests/results"
+    
+    # Install project-specific dependencies
+    if [[ -f "$project_dir/package.json" ]]; then
+        (cd "$project_dir" && npm install)
+    fi
+    
+    # Install Ruby dependencies
+    if [[ -f "$project_dir/Gemfile" ]]; then
+        (cd "$project_dir" && bundle install)
+    fi
+    
+    log_success "Resume project setup complete"
+}
+
 setup_account_repositories() {
     log_info "Setting up repositories for all accounts..."
     
@@ -229,6 +341,9 @@ main() {
     create_account_directories
     setup_vscode_workspace
     setup_python_environment
+    setup_ruby_environment
+    setup_testing_environment
+    setup_resume_project
     setup_account_repositories
     
     log_success "Workspace setup complete!"

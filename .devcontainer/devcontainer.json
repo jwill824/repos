@@ -19,9 +19,16 @@
         },
         "olliglorioso/git-completion/git-completion": "latest",
         "ghcr.io/devcontainers-contrib/features/actionlint:1": {},
-        "ghcr.io/devcontainers/features/docker-in-docker": {},
         "ghcr.io/devcontainers/features/python:1": {
-            "version": "3.11"
+            "version": "3.12"
+        }
+    },
+    "forwardPorts": [5173],
+    "portsAttributes": {
+        "5173": {
+            "label": "Vite Dev Server",
+            "onAutoForward": "notify",
+            "protocol": "http"
         }
     },
     "customizations": {
@@ -42,22 +49,46 @@
                 "vmware.vscode-boot-dev-pack",
                 "christian-kohler.npm-intellisense",
                 "DavidAnson.vscode-markdownlint",
-                "donjayamanne.githistory"
+                "donjayamanne.githistory",
+                "mechatroner.rainbow-csv",
+                "ms-dotnettools.csdevkit",
+                "stylelint.vscode-stylelint",
+                "editorconfig.editorconfig",
+                "rome.rome",
+                "html-validate.vscode-html-validate",
+                "dbaeumer.vscode-eslint",
+                "esbenp.prettier-vscode",
+                "formulahendry.auto-rename-tag",
+                "bradlc.vscode-tailwindcss",
+                "dsznajder.es7-react-js-snippets",
+                "stackbreak.comment-divider",
+                "ms-vscode.vscode-typescript-next"
             ],
             "settings": {
                 "terraform.languageServer": {
                     "enabled": true,
-                    "args": ["serve"]
+                    "args": [
+                        "serve"
+                    ]
                 },
                 "python.defaultInterpreterPath": "${containerWorkspaceFolder}/.venv/bin/python",
                 "terminal.integrated.defaultProfile.linux": "bash",
-                "terminal.integrated.persistentCustomShell": true
+                "terminal.integrated.persistentCustomShell": true,
+                "editor.formatOnSave": true,
+                "editor.codeActionsOnSave": {
+                    "source.fixAll.eslint": "explicit"
+                },
+                "javascript.updateImportsOnFileMove.enabled": "always",
+                "typescript.updateImportsOnFileMove.enabled": "always"
             }
         }
     },
+    "postCreateCommand": "bash ${containerWorkspaceFolder}/.devcontainer/setup.sh",
     "remoteEnv": {
         "TF_LOG": "info",
-        "TF_LOG_PATH": ".terraform_devcontainer.log"
-    },
-    "postCreateCommand": "bash ${containerWorkspaceFolder}/.devcontainer/setup.sh"
+        "TF_LOG_PATH": ".terraform_devcontainer.log",
+        "HOST": "0.0.0.0",
+        "VITE_DEV_SERVER_HOST": "0.0.0.0",
+        "VITE_DEV_SERVER_PORT": "5173"
+    }
 }
