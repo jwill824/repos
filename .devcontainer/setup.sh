@@ -51,6 +51,81 @@ validate_requirements() {
     log_success "All initial requirements validated"
 }
 
+install_project_dependencies() {
+    local project_dir="$1"
+    cd "$project_dir" || return 1
+    
+    log_info "Checking for dependencies in $project_dir"
+    
+    # Node.js dependencies with testing setup
+    if [[ -f "package.json" ]]; then
+        log_info "Installing Node.js dependencies..."
+        local has_testing_deps=false
+        
+        # Check if package.json contains testing-related dependencies
+        if grep -q "\"jest\"\|\"playwright\"\|\"puppeteer\"" "package.json"; then
+            has_testing_deps=true
+            # Install system dependencies for Playwright/Chrome if needed
+            if [[ "$has_testing_deps" == true ]]; then
+                log_info "Installing system dependencies for testing..."
+                sudo apt-get update && sudo apt-get install -y \
+                    libgbm-dev \
+                    libatk1.0-0 \
+                    libatk-bridge2.0-0 \
+                    libcups2 \
+                    libdrm2 \
+                    libxkbcommon0 \
+                    libxcomposite1 \
+                    libxdamage1 \
+                    libxfixes3 \
+                    libxrandr2 \
+                    libgbm1 \
+                    libasound2 \
+                    chromium \
+                    fonts-liberation \
+                    libappindicator3-1 \
+                    libnss3 \
+                    libxss1 \
+                    lsb-release \
+                    xdg-utils
+            fi
+        fi
+        
+        # Install dependencies
+        if [[ -f "yarn.lock" ]]; then
+            yarn install || log_warning "Yarn install failed in $project_dir"
+            [[ "$has_testing_deps" == true ]] && yarn playwright install chromium
+        else
+            npm install || log_warning "NPM install failed in $project_dir"
+            [[ "$has_testing_deps" == true ]] && npx playwright install chromium
+        fi
+    fi
+    
+    # Python dependencies with virtual environment
+    if [[ -f "pyproject.toml" ]] || [[ -f "requirements.txt" ]]; then
+        setup_python_venv "$project_dir"
+    fi
+    
+    # Ruby dependencies with local gems
+    if [[ -f "Gemfile" ]]; then
+        log_info "Installing Ruby dependencies..."
+        
+        # Install Ruby system dependencies if needed
+        if ! command -v ruby &> /dev/null || ! command -v gem &> /dev/null; then
+            log_info "Installing Ruby system dependencies..."
+            sudo apt-get update
+            sudo apt-get install -y ruby-full build-essential zlib1g-dev
+        fi
+        
+        # Set local bundle config
+        bundle config set --local path 'vendor/bundle'
+        bundle install || log_warning "Bundle install failed in $project_dir"
+    fi
+    
+    cd - > /dev/null
+    log_success "Dependency installation completed for $project_dir"
+}
+
 setup_environment() {
     log_info "Setting up environment..."
     
@@ -119,17 +194,17 @@ setup_git_config() {
         chmod 755 "$hooks_dir/$hook"
     done
 
-    # Install gh cli
-    # https://github.com/cli/cli/blob/trunk/docs/install_linux.md
-    (type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)) \
-        && sudo mkdir -p -m 755 /etc/apt/keyrings \
-            && out=$(mktemp) && wget -nv -O$out https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-            && cat $out | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
-        && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
-        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-        && sudo apt update \
-        && sudo apt install gh -y
-
+    if ! command -v gh &> /dev/null; then
+        log_info "Installing GitHub CLI..."
+        {
+            type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+            && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+            && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+            && sudo apt update \
+            && sudo apt install gh -y
+        } || log_warning "GitHub CLI installation failed, but continuing with setup"
+    fi
     
     log_success "Git config and hooks set up for $repo_root"
 }
@@ -181,135 +256,71 @@ setup_vscode_workspace() {
     log_info "Setting up VS Code workspace..."
     local workspace_file="$WORKSPACE_ROOT/Repos.code-workspace"
     
-    # Get all account names (excluding 'default') and create folders array
     local folders_json=$(jq -r '
         [
-            {path: "."},
+            {
+                name: "root",
+                path: "."
+            },
             (
                 keys[] | 
                 select(. != "default") | 
-                {path: .}
+                {
+                    name: .,
+                    path: (. | "./\(.)"),
+                }
             )
         ]
     ' "$DEVCONTAINER_DIR/repo_config.json")
     
-    # Create workspace file with dynamic folders
-    jq -n --argjson folders "$folders_json" '{
+    jq -n --argjson folders "$folders_json" '
+    {
         folders: $folders,
-        settings: {}
+        settings: {
+            "github.copilot.advanced": {
+                "workspaceKindPriority": (
+                    $folders | to_entries | map({
+                        key: .value.name,
+                        value: (.key + 1)
+                    }) | from_entries
+                )
+            }
+        }
     }' > "$workspace_file"
     
-    log_success "Updated VS Code workspace file"
+    log_success "Updated VS Code workspace file with enhanced configuration"
 }
 
-setup_python_environment() {
-    log_info "Setting up Python environment..."
+setup_python_venv() {
+    local project_dir="$1"
+    local venv_name=".venv"
     
-    python -m venv "$VENV_PATH"
-    source "$VENV_PATH/bin/activate"
+    cd "$project_dir" || return 1
+    log_info "Setting up Python virtual environment for $project_dir"
     
+    # Create virtual environment if it doesn't exist
+    if [[ ! -d "$venv_name" ]]; then
+        python -m venv "$venv_name"
+        log_success "Created virtual environment in $project_dir/$venv_name"
+    fi
+    
+    # Activate virtual environment and install dependencies
+    source "$venv_name/bin/activate"
+    
+    # Upgrade pip in the virtual environment
     pip install --upgrade pip
-    pip install pytest black flake8 aiohttp
     
-    log_success "Python environment configured"
-}
-
-setup_ruby_environment() {
-    log_info "Setting up Ruby environment..."
-
-    # Update package list
-    sudo apt-get update
-
-    # Install Ruby and development tools
-    sudo apt-get install -y ruby-full build-essential zlib1g-dev
-
-    # Configure gem installation path
-    if ! grep -q "export GEM_HOME=\"\$HOME/.gems\"" ~/.bashrc; then
-        echo '# Install Ruby Gems to ~/.gems' >> ~/.bashrc
-        echo 'export GEM_HOME="$HOME/.gems"' >> ~/.bashrc
-        echo 'export PATH="$HOME/.gems/bin:$PATH"' >> ~/.bashrc
-    fi
-
-    # Load the new environment variables
-    export GEM_HOME="$HOME/.gems"
-    export PATH="$HOME/.gems/bin:$PATH"
-
-    # Create the gems directory if it doesn't exist
-    mkdir -p "$HOME/.gems"
-
-    # Install Jekyll and Bundler without sudo
-    gem install jekyll bundler
-
-    log_success "Ruby environment configured"
-}
-
-setup_testing_environment() {
-    log_info "Setting up testing environment..."
-
-    # Install system dependencies for Playwright/Chrome
-    sudo apt-get update && sudo apt-get install -y \
-        libgbm-dev \
-        libatk1.0-0 \
-        libatk-bridge2.0-0 \
-        libcups2 \
-        libdrm2 \
-        libxkbcommon0 \
-        libxcomposite1 \
-        libxdamage1 \
-        libxfixes3 \
-        libxrandr2 \
-        libgbm1 \
-        libasound2 \
-        chromium \
-        fonts-liberation \
-        libappindicator3-1 \
-        libnss3 \
-        libxss1 \
-        lsb-release \
-        xdg-utils
-
-    # Install Node.js testing dependencies
-    npm install -g \
-        @testing-library/jest-dom \
-        @testing-library/dom \
-        jest \
-        jest-environment-jsdom \
-        lighthouse \
-        pixelmatch \
-        playwright \
-        pngjs
-
-    # Install Playwright browsers
-    npx playwright install chromium
-
-    # Install additional Ruby gems for testing
-    gem install \
-        html-proofer \
-        webrick \
-        nokogiri
-
-    log_success "Testing environment set up successfully"
-}
-
-setup_resume_project() {
-    log_info "Setting up resume project..."
-    
-    local project_dir="$WORKSPACE_ROOT/personal/resume"
-    
-    # Create test directories if they don't exist
-    mkdir -p "$project_dir/tests/results"
-    
-    # Install project-specific dependencies
-    if [[ -f "$project_dir/package.json" ]]; then
-        (cd "$project_dir" && npm install)
+    # Install dependencies based on what files exist
+    if [[ -f "pyproject.toml" ]]; then
+        if ! command -v poetry &> /dev/null; then
+            curl -sSL https://install.python-poetry.org | python3 -
+        fi
+        poetry install || log_warning "Poetry install failed in $project_dir"
+    elif [[ -f "requirements.txt" ]]; then
+        pip install -r requirements.txt || log_warning "Pip install failed in $project_dir"
     fi
     
-    # Install Ruby dependencies
-    if [[ -f "$project_dir/Gemfile" ]]; then
-        (cd "$project_dir" && bundle install)
-    fi
-    
-    log_success "Resume project setup complete"
+    cd - > /dev/null
 }
 
 setup_account_repositories() {
@@ -324,10 +335,11 @@ setup_account_repositories() {
         
         log_info "Setting up repositories for $account..."
         
-        # Setup git config for any existing repositories
+        # Setup git config and install dependencies for any existing repositories
         if [[ -d "$account_dir" ]]; then
             find "$account_dir" -type d -name ".git" -exec dirname {} \; | while read -r repo_dir; do
                 setup_git_config "$repo_dir" "$git_email" "$git_name"
+                install_project_dependencies "$repo_dir"
             done
         fi
     done
@@ -340,10 +352,6 @@ main() {
     setup_workspace
     create_account_directories
     setup_vscode_workspace
-    setup_python_environment
-    setup_ruby_environment
-    setup_testing_environment
-    setup_resume_project
     setup_account_repositories
     
     log_success "Workspace setup complete!"

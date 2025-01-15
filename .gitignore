@@ -4,7 +4,6 @@
 # But not these files...
 !.gitignore
 !README.md
-!Repos.code-workspace
 
 # ...and not these folders
 !.devcontainer/
@@ -19,6 +18,9 @@
 !.devcontainer/prepare-commit-msg.py
 !.devcontainer/.env.example
 !.devcontainer/git-new-branch.sh
+!.devcontainer/repo_config.example.json
+
+!.vscode
 
 # Re-ignore any potential .git directories
 **/.git
