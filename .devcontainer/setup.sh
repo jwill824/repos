@@ -51,6 +51,38 @@ validate_requirements() {
     log_success "All initial requirements validated"
 }
 
+install_system_dependencies() {
+    local packages=("$@")
+    local temp_file=$(mktemp)
+    
+    log_info "Installing packages: ${packages[*]}"
+    
+    # Run apt-get commands with proper error handling
+    {
+        if ! DEBIAN_FRONTEND=noninteractive sudo apt-get update -qq; then
+            log_error "Failed to update package lists"
+            return 1
+        fi
+        
+        if ! DEBIAN_FRONTEND=noninteractive sudo apt-get install -y "${packages[@]}"; then
+            log_error "Failed to install packages: ${packages[*]}"
+            return 1
+        fi
+    } > "$temp_file" 2>&1
+    
+    local result=$?
+    
+    if [[ $result -ne 0 ]]; then
+        log_error "Package installation failed. Last output:"
+        tail -n 10 "$temp_file"
+        rm -f "$temp_file"
+        return $result
+    fi
+    
+    rm -f "$temp_file"
+    return 0
+}
+
 install_project_dependencies() {
     local project_dir="$1"
     cd "$project_dir" || return 1
@@ -63,12 +95,11 @@ install_project_dependencies() {
         local has_testing_deps=false
         
         # Check if package.json contains testing-related dependencies
-        if grep -q "\"jest\"\|\"playwright\"\|\"puppeteer\"" "package.json"; then
+        if grep -q "\"playwright\"" "package.json"; then
             has_testing_deps=true
-            # Install system dependencies for Playwright/Chrome if needed
             if [[ "$has_testing_deps" == true ]]; then
                 log_info "Installing system dependencies for testing..."
-                sudo apt-get update && sudo apt-get install -y \
+                if ! install_system_dependencies \
                     libgbm-dev \
                     libatk1.0-0 \
                     libatk-bridge2.0-0 \
@@ -87,7 +118,9 @@ install_project_dependencies() {
                     libnss3 \
                     libxss1 \
                     lsb-release \
-                    xdg-utils
+                    xdg-utils; then
+                    log_warning "Failed to install some system dependencies. Continuing with setup..."
+                fi
             fi
         fi
         
@@ -113,12 +146,30 @@ install_project_dependencies() {
         # Install Ruby system dependencies if needed
         if ! command -v ruby &> /dev/null || ! command -v gem &> /dev/null; then
             log_info "Installing Ruby system dependencies..."
-            sudo apt-get update
-            sudo apt-get install -y ruby-full build-essential zlib1g-dev
+            install_system_dependencies ruby-full build-essential zlib1g-dev
+            
+            # Configure gem installation path
+            if ! grep -q "export GEM_HOME=\"\$HOME/.gems\"" ~/.bashrc; then
+                echo '# Install Ruby Gems to ~/.gems' >> ~/.bashrc
+                echo 'export GEM_HOME="$HOME/.gems"' >> ~/.bashrc
+                echo 'export PATH="$HOME/.gems/bin:$PATH"' >> ~/.bashrc
+            fi
+            
+            # Load the new environment variables
+            export GEM_HOME="$HOME/.gems"
+            export PATH="$HOME/.gems/bin:$PATH"
+            
+            # Create the gems directory if it doesn't exist
+            mkdir -p "$HOME/.gems"
+            
+            # Install bundler
+            gem install bundler
         fi
         
-        # Set local bundle config
+        # Configure bundler for local installation
         bundle config set --local path 'vendor/bundle'
+        
+        # Install project dependencies
         bundle install || log_warning "Bundle install failed in $project_dir"
     fi
     
@@ -193,18 +244,6 @@ setup_git_config() {
         cp "$DEVCONTAINER_DIR/$hook" "$hooks_dir/"
         chmod 755 "$hooks_dir/$hook"
     done
-
-    if ! command -v gh &> /dev/null; then
-        log_info "Installing GitHub CLI..."
-        {
-            type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
-            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-            && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-            && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-            && sudo apt update \
-            && sudo apt install gh -y
-        } || log_warning "GitHub CLI installation failed, but continuing with setup"
-    fi
     
     log_success "Git config and hooks set up for $repo_root"
 }
@@ -234,6 +273,46 @@ EOF
     local default_config=$(jq -r '.default' "$DEVCONTAINER_DIR/repo_config.json")
     git config --global user.email "$(echo "$default_config" | jq -r '.email')"
     git config --global user.name "$(echo "$default_config" | jq -r '.name')"
+
+    # Install GitHub CLI with better error handling and background processing
+    if ! command -v gh &> /dev/null; then
+        log_info "Installing GitHub CLI..."
+        {
+            # Create a temporary file to store the installation output
+            local temp_file=$(mktemp)
+            
+            # Run the installation in the background and redirect output
+            {
+                type -p curl >/dev/null || (sudo apt-get update && sudo apt-get install curl -y)
+                curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null
+                sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+                echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+                sudo apt-get update -qq
+                DEBIAN_FRONTEND=noninteractive sudo apt-get install -y gh
+            } > "$temp_file" 2>&1 &
+            
+            # Store the background process ID
+            local install_pid=$!
+            
+            # Wait for the installation to complete with a timeout
+            local timeout=300  # 5 minutes timeout
+            local counter=0
+            while kill -0 $install_pid 2>/dev/null; do
+                sleep 1
+                ((counter++))
+                if ((counter >= timeout)); then
+                    kill $install_pid 2>/dev/null
+                    log_warning "GitHub CLI installation timed out after ${timeout} seconds"
+                    break
+                fi
+            done
+            
+            # Clean up
+            rm -f "$temp_file"
+        } || log_warning "GitHub CLI installation failed, but continuing with setup"
+    fi
+    
+    log_success "Workspace setup completed"
 }
 
 create_account_directories() {
@@ -315,7 +394,7 @@ setup_python_venv() {
         if ! command -v poetry &> /dev/null; then
             curl -sSL https://install.python-poetry.org | python3 -
         fi
-        poetry install || log_warning "Poetry install failed in $project_dir"
+        poetry lock && poetry install || log_warning "Poetry install failed in $project_dir"
     elif [[ -f "requirements.txt" ]]; then
         pip install -r requirements.txt || log_warning "Pip install failed in $project_dir"
     fi
