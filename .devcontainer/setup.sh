@@ -235,7 +235,7 @@ setup_git_config() {
     git config --global --add safe.directory "$repo_root"
     git -C "$repo_root" config user.email "$git_email"
     git -C "$repo_root" config user.name "$git_name"
-    
+
     # Setup hooks
     local hooks_dir="$repo_root/.git/hooks"
     mkdir -p "$hooks_dir"
@@ -372,34 +372,212 @@ setup_vscode_workspace() {
 
 setup_python_venv() {
     local project_dir="$1"
-    local venv_name=".venv"
     
-    cd "$project_dir" || return 1
-    log_info "Setting up Python virtual environment for $project_dir"
-    
-    # Create virtual environment if it doesn't exist
-    if [[ ! -d "$venv_name" ]]; then
-        python -m venv "$venv_name"
-        log_success "Created virtual environment in $project_dir/$venv_name"
+    # Skip if this is inside a virtual environment
+    if [[ "$project_dir" == *"/.venv/"* ]]; then
+        return 0
     fi
     
-    # Activate virtual environment and install dependencies
-    source "$venv_name/bin/activate"
-    
-    # Upgrade pip in the virtual environment
-    pip install --upgrade pip
-    
-    # Install dependencies based on what files exist
-    if [[ -f "pyproject.toml" ]]; then
-        if ! command -v poetry &> /dev/null; then
-            curl -sSL https://install.python-poetry.org | python3 -
+    # Find the nearest directory containing pyproject.toml
+    local current_dir="$project_dir"
+    while [[ "$current_dir" != "/" ]]; do
+        if [[ -f "$current_dir/pyproject.toml" ]]; then
+            project_dir="$current_dir"
+            break
         fi
-        poetry lock && poetry install || log_warning "Poetry install failed in $project_dir"
-    elif [[ -f "requirements.txt" ]]; then
-        pip install -r requirements.txt || log_warning "Pip install failed in $project_dir"
+        current_dir="$(dirname "$current_dir")"
+    done
+    
+    # Ensure we're not in root directory
+    if [[ "$project_dir" == "/" ]]; then
+        log_error "Could not find pyproject.toml in parent directories"
+        return 1
+    fi
+    
+    cd "$project_dir" || return 1
+    log_info "Setting up Python environment in $project_dir"
+    
+    # Install system dependencies required for building Python packages
+    log_info "Installing Python build dependencies..."
+    if ! install_system_dependencies \
+        python3-dev \
+        python3-pip \
+        python3-venv \
+        build-essential \
+        libyaml-dev \
+        libffi-dev \
+        pkg-config; then
+        log_warning "Failed to install some build dependencies"
+    fi
+    
+    # Install poetry if not present
+    if ! command -v poetry &> /dev/null; then
+        log_info "Installing Poetry..."
+        curl -sSL https://install.python-poetry.org | python3 -
+        export PATH="/root/.local/bin:$HOME/.local/bin:$PATH"
+    fi
+    
+    # Configure poetry to create virtual environments in the project directory
+    poetry config virtualenvs.in-project true
+    
+    # Install dependencies with poetry
+    if [[ -f "pyproject.toml" ]]; then
+        log_info "Installing project dependencies with Poetry..."
+        if ! poetry env use python3.9 2>/dev/null; then
+            log_warning "Python 3.9 not available, falling back to system Python"
+            poetry env use python3
+        fi
+        
+        # Install dependencies (without timeout)
+        PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring poetry install --no-interaction || \
+            log_warning "Poetry install failed in $project_dir"
+        
+        # Create an activation script
+        local activate_script="$project_dir/activate_venv.sh"
+        cat > "$activate_script" << EOF
+#!/bin/bash
+poetry shell
+echo "Activated virtual environment for $(basename "$project_dir")"
+EOF
+        chmod +x "$activate_script"
+        
+        log_info "Created activation script: $activate_script"
+        log_info "To activate this venv, run: source $activate_script"
     fi
     
     cd - > /dev/null
+}
+
+setup_aws() {
+    local account_dir="$1"
+    local account_name="$(basename "$account_dir")"
+    
+    # Only configure AWS for LeadingEdje workspace
+    if [[ "$account_name" != "leadingedje" ]]; then
+        return 0
+    fi
+    
+    log_info "Setting up AWS configuration for LeadingEdje workspace..."
+
+    # Create workspace-specific AWS directory and saml2aws config
+    local aws_dir="$account_dir/.aws"
+    local saml2aws_config="$account_dir/.saml2aws"
+    
+    rm -rf "$aws_dir"
+    rm -f "$saml2aws_config"
+    mkdir -p "$aws_dir"
+
+    # Install AWS CLI v2 using architecture-aware approach
+    if ! command -v aws &> /dev/null; then
+        log_info "Installing AWS CLI..."
+        
+        local temp_dir=$(mktemp -d)
+        cd "$temp_dir"
+        
+        # Detect architecture
+        local arch=$(uname -m)
+        local aws_cli_url
+        case $arch in
+            "x86_64")
+                aws_cli_url="https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+                ;;
+            "aarch64")
+                aws_cli_url="https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip"
+                ;;
+            *)
+                log_error "Unsupported architecture: $arch"
+                return 1
+                ;;
+        esac
+        
+        # Download and install AWS CLI v2
+        if curl -fsSL "$aws_cli_url" -o "awscliv2.zip"; then
+            unzip -q awscliv2.zip
+            sudo ./aws/install
+            
+            # Cleanup
+            cd - > /dev/null
+            rm -rf "$temp_dir"
+            
+            if [[ -x "/usr/local/bin/aws" ]]; then
+                log_success "AWS CLI installed successfully for $arch architecture"
+            else
+                log_error "AWS CLI installation failed"
+                return 1
+            fi
+        else
+            log_error "Failed to download AWS CLI installer"
+            return 1
+        fi
+    fi
+    
+    # Install saml2aws if not present
+    if ! command -v saml2aws &> /dev/null; then
+        log_info "Installing saml2aws..."
+        CURRENT_VERSION=$(curl -Ls https://api.github.com/repos/Versent/saml2aws/releases/latest | grep 'tag_name' | cut -d'v' -f2 | cut -d'"' -f1)
+        wget -q https://github.com/Versent/saml2aws/releases/download/v${CURRENT_VERSION}/saml2aws_${CURRENT_VERSION}_linux_amd64.tar.gz
+        tar -xzf saml2aws_${CURRENT_VERSION}_linux_amd64.tar.gz -C /tmp
+        sudo mv /tmp/saml2aws /usr/local/bin/
+        sudo chmod u+x /usr/local/bin/saml2aws
+        rm -f saml2aws_${CURRENT_VERSION}_linux_amd64.tar.gz
+        rm -rf /tmp/*.md
+    fi
+
+    # Configure AWS CLI default settings
+    cat > "$aws_dir/config" << EOF
+[profile development]
+region = us-east-2
+role_arn       = arn:aws:iam::702328517568:role/DevOpsRole
+output = json
+source_profile = le-sso
+EOF
+
+    cat > "$saml2aws_config" << EOF
+[default]
+app_id                  = 305541016011
+url                     = https://accounts.google.com/o/saml2/initsso?idpid=C035husfp&spid=305541016011
+username                = jeff.williams@leadingedje.com
+provider                = GoogleApps
+mfa                     = Auto
+skip_verify             = false
+timeout                 = 0
+aws_urn                 = urn:amazon:webservices
+aws_session_duration    = 43200
+aws_profile             = le-sso
+region                  = us-east-2
+EOF
+
+    # Update workspace environment with xvfb wrapper
+    local workspace_env="$account_dir/.workspace_env"
+    cat > "$workspace_env" << 'EOF'
+# AWS Configuration for LeadingEdje workspace
+export AWS_SHARED_CREDENTIALS_FILE="$aws_dir/credentials"
+export SAML2AWS_CONFIGFILE="$saml2aws_config"
+export AWS_PROFILE=default
+export AWS_DEFAULT_REGION=us-east-2
+EOF
+
+    #TODO: Add AWS CLI completion script
+    #TODO: Add saml2aws completion script
+    #TODO: Add AWS CLI and saml2aws aliases
+    #TODO: Install stackmanager for AWS CloudFormation
+
+    # Source workspace environment in bashrc if not already present
+    if ! grep -q "source.*$workspace_env" ~/.bashrc; then
+        echo "
+# Source LeadingEdje workspace environment
+if [[ \"\$PWD\" == \"$account_dir\"* ]] && [[ -f \"$workspace_env\" ]]; then
+    source \"$workspace_env\"
+fi" >> ~/.bashrc
+    fi
+
+    log_success "AWS configuration set up for LeadingEdje workspace"
+    log_info "To use AWS CLI and saml2aws:"
+    log_info "1. cd into ${account_dir}"
+    log_info "2. source .workspace_env"
+    log_info "3. aws_login           # Login to AWS"
+    log_info "4. aws_roles          # List available roles"
+    log_info "5. aws_switch PROFILE  # Switch between profiles"
 }
 
 setup_account_repositories() {
@@ -416,9 +594,18 @@ setup_account_repositories() {
         
         # Setup git config and install dependencies for any existing repositories
         if [[ -d "$account_dir" ]]; then
+            setup_aws "$account_dir"
+            
+            # First, handle git repositories
             find "$account_dir" -type d -name ".git" -exec dirname {} \; | while read -r repo_dir; do
                 setup_git_config "$repo_dir" "$git_email" "$git_name"
                 install_project_dependencies "$repo_dir"
+            done
+            
+            # Then, recursively search for Python projects
+            find "$account_dir" -type f \( -name "pyproject.toml" -o -name "requirements.txt" \) -exec dirname {} \; | while read -r python_dir; do
+                log_info "Found Python project in: $python_dir"
+                setup_python_venv "$python_dir"
             done
         fi
     done
@@ -434,7 +621,6 @@ main() {
     setup_account_repositories
     
     log_success "Workspace setup complete!"
-    log_info "You can now use 'git new' to create a new branch following the conventional commit pattern."
 }
 
 main "$@"
