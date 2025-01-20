@@ -397,47 +397,100 @@ setup_python_venv() {
     cd "$project_dir" || return 1
     log_info "Setting up Python environment in $project_dir"
     
-    # Install system dependencies required for building Python packages
+    # Install build dependencies
     log_info "Installing Python build dependencies..."
     if ! install_system_dependencies \
-        python3-dev \
-        python3-pip \
-        python3-venv \
         build-essential \
-        libyaml-dev \
-        libffi-dev \
-        pkg-config; then
+        libssl-dev \
+        zlib1g-dev \
+        libbz2-dev \
+        libreadline-dev \
+        libsqlite3-dev \
+        curl \
+        python3-pip \
+        postgresql \
+        postgresql-contrib \
+        libpq-dev \
+        python3-dev; then
         log_warning "Failed to install some build dependencies"
+    fi
+    
+    # Install pyenv for Python version management
+    if [[ ! -d "$HOME/.pyenv" ]] || ! command -v pyenv &> /dev/null; then
+        log_info "Installing pyenv..."
+        # Clean up existing pyenv if it's broken
+        if [[ -d "$HOME/.pyenv" ]]; then
+            log_info "Removing existing pyenv installation..."
+            rm -rf "$HOME/.pyenv"
+        fi
+        
+        # Install pyenv
+        curl -L https://pyenv.run | bash
+        
+        # Set up pyenv environment
+        export PYENV_ROOT="$HOME/.pyenv"
+        export PATH="$PYENV_ROOT/bin:$PATH"
+        eval "$(pyenv init -)"
+        
+        # Add to bashrc if not already present
+        if ! grep -q "pyenv init" ~/.bashrc; then
+            echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
+            echo 'export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
+            echo 'eval "$(pyenv init -)"' >> ~/.bashrc
+        fi
+        
+        # Install Python versions
+        local python_versions=("3.9.18" "3.12.1")
+        for version in "${python_versions[@]}"; do
+            if ! pyenv versions | grep -q "$version"; then
+                pyenv install "$version" || log_warning "Failed to install Python $version"
+            fi
+        done
     fi
     
     # Install poetry if not present
     if ! command -v poetry &> /dev/null; then
         log_info "Installing Poetry..."
-        curl -sSL https://install.python-poetry.org | python3 -
-        export PATH="/root/.local/bin:$HOME/.local/bin:$PATH"
+        curl -sSL https://install.python-poetry.org | POETRY_HOME="$HOME/.local" python3 -
+        export PATH="$HOME/.local/bin:$PATH"
+        
+        # Configure poetry
+        poetry config virtualenvs.in-project true
     fi
-    
-    # Configure poetry to create virtual environments in the project directory
-    poetry config virtualenvs.in-project true
     
     # Install dependencies with poetry
     if [[ -f "pyproject.toml" ]]; then
         log_info "Installing project dependencies with Poetry..."
-        if ! poetry env use python3.9 2>/dev/null; then
-            log_warning "Python 3.9 not available, falling back to system Python"
-            poetry env use python3
+        
+        # Detect required Python version from pyproject.toml
+        local python_version
+        if grep -q "python = \".*3.12" "pyproject.toml"; then
+            python_version="3.12.1"
+        else
+            python_version="3.9.18"  # default to 3.9
         fi
         
-        # Install dependencies (without timeout)
-        PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring poetry install --no-interaction || \
-            log_warning "Poetry install failed in $project_dir"
+        # Set local Python version
+        pyenv local "$python_version"
         
-        # Create an activation script
+        # Create new environment with detected Python version
+        poetry env use $(pyenv which "python${python_version%.*}") || {
+            log_warning "Failed to use Python $python_version, falling back to system Python"
+            poetry env use python3
+        }
+        
+        # Install dependencies with --no-root if no packages defined
+        if grep -q "package-mode = false\|packages = \[" "pyproject.toml"; then
+            PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring poetry install --no-interaction
+        else
+            PYTHON_KEYRING_BACKEND=keyring.backends.null.Keyring poetry install --no-interaction --no-root
+        fi
+        
+        # Create activation script
         local activate_script="$project_dir/activate_venv.sh"
         cat > "$activate_script" << EOF
 #!/bin/bash
-poetry shell
-echo "Activated virtual environment for $(basename "$project_dir")"
+source \$(poetry env info --path)/bin/activate
 EOF
         chmod +x "$activate_script"
         
@@ -547,20 +600,19 @@ aws_profile             = le-sso
 region                  = us-east-2
 EOF
 
-    # Update workspace environment with xvfb wrapper
+    # Update workspace environment with correctly qualified paths
     local workspace_env="$account_dir/.workspace_env"
-    cat > "$workspace_env" << 'EOF'
+    cat > "$workspace_env" << EOF
 # AWS Configuration for LeadingEdje workspace
-export AWS_SHARED_CREDENTIALS_FILE="$aws_dir/credentials"
-export SAML2AWS_CONFIGFILE="$saml2aws_config"
-export AWS_PROFILE=default
+export AWS_SHARED_CREDENTIALS_FILE="${aws_dir}/credentials"
+export AWS_CONFIG_FILE="${aws_dir}/config"
+export SAML2AWS_CONFIGFILE="${saml2aws_config}"
 export AWS_DEFAULT_REGION=us-east-2
 EOF
 
     #TODO: Add AWS CLI completion script
     #TODO: Add saml2aws completion script
     #TODO: Add AWS CLI and saml2aws aliases
-    #TODO: Install stackmanager for AWS CloudFormation
 
     # Source workspace environment in bashrc if not already present
     if ! grep -q "source.*$workspace_env" ~/.bashrc; then
@@ -611,6 +663,52 @@ setup_account_repositories() {
     done
 }
 
+setup_dotfiles_test_environment() {
+    log_info "Setting up test environment..."
+    
+    # Install Bats and dependencies
+    log_info "Installing Bats Core..."
+    if ! command -v bats &> /dev/null; then
+        git clone https://github.com/bats-core/bats-core.git /tmp/bats-core
+        cd /tmp/bats-core
+        sudo ./install.sh /usr/local
+        cd - > /dev/null
+        rm -rf /tmp/bats-core
+    fi
+    
+    # Define paths for dotfiles tests
+    local DOTFILES_DIR="$WORKSPACE_ROOT/personal/dotfiles"
+    local DOTFILES_TEST_DIR="$DOTFILES_DIR/tests/test_helper"
+    
+    # Create test helper directory if it doesn't exist
+    mkdir -p "$DOTFILES_TEST_DIR"
+    
+    # Clone test helper repositories if they don't exist
+    local test_helpers=(
+        "https://github.com/bats-core/bats-support.git"
+        "https://github.com/bats-core/bats-assert.git"
+    )
+    
+    for repo in "${test_helpers[@]}"; do
+        local repo_name=$(basename "$repo" .git)
+        local target_dir="$DOTFILES_TEST_DIR/$repo_name"
+        
+        if [[ ! -d "$target_dir" ]]; then
+            git clone "$repo" "$target_dir"
+        fi
+    done
+    
+    # Install Pester if not already installed
+    if ! pwsh -Command "Get-Module -ListAvailable Pester"; then
+        pwsh -Command "Install-Module -Name Pester -Force -SkipPublisherCheck"
+    fi
+    
+    log_success "Test environment setup complete"
+    log_info "To run tests:"
+    log_info "  Bats tests: cd $DOTFILES_DIR && bats tests/"
+    log_info "  Pester tests: cd $DOTFILES_DIR && pwsh -Command 'Invoke-Pester ./tests/setup.Tests.ps1 -Output Detailed'"
+}
+
 main() {
     validate_requirements
     setup_environment
@@ -619,8 +717,7 @@ main() {
     create_account_directories
     setup_vscode_workspace
     setup_account_repositories
+    setup_dotfiles_test_environment
     
     log_success "Workspace setup complete!"
 }
-
-main "$@"

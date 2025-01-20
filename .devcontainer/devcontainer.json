@@ -21,6 +21,9 @@
         "ghcr.io/devcontainers-contrib/features/actionlint:1": {},
         "ghcr.io/devcontainers/features/python:1": {
             "version": "3.12"
+        },
+        "ghcr.io/devcontainers/features/powershell:1": {
+            "version": "latest"
         }
     },
     "forwardPorts": [5173],
@@ -65,7 +68,9 @@
                 "bradlc.vscode-tailwindcss",
                 "dsznajder.es7-react-js-snippets",
                 "stackbreak.comment-divider",
-                "ms-vscode.vscode-typescript-next"
+                "ms-vscode.vscode-typescript-next",
+                "kddejong.vscode-cfn-lint",
+                "ms-vscode.powershell"
             ],
             "settings": {
                 "terraform.languageServer": {
