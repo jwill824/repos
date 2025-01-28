@@ -26,13 +26,23 @@
             "version": "latest"
         }
     },
+    "appPort": [
+        "127.0.0.1:5173:5173",  // Localhost access
+        "0.0.0.0:5174:5173"     // External access on different port
+    ],
     "forwardPorts": [5173],
     "portsAttributes": {
         "5173": {
-            "label": "Vite Dev Server",
+            "label": "Vite Dev Server (localhost)",
+            "onAutoForward": "notify",
+            "protocol": "http"
+        },
+        "5174": {
+            "label": "Vite Dev Server (external)",
             "onAutoForward": "notify",
             "protocol": "http",
-            "visibility": "public"
+            "visibility": "public",
+            "hostIP": "0.0.0.0"
         }
     },
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind,consistency=cached",
@@ -98,5 +108,7 @@
         "HOST": "0.0.0.0",
         "VITE_DEV_SERVER_HOST": "0.0.0.0",
         "VITE_DEV_SERVER_PORT": "5173",
+        "CHOKIDAR_USEPOLLING": "true",
+        "VITE_HMR_HOST": "localhost"
     }
 }

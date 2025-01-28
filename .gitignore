@@ -5,9 +5,6 @@
 !.gitignore
 !README.md
 
-# ...and not these folders
-!.devcontainer/
-
 # Ignore everything in .devcontainer except specific files
 .devcontainer/*
 !.devcontainer/devcontainer.json
@@ -19,6 +16,7 @@
 !.devcontainer/.env.example
 !.devcontainer/git-new-branch.sh
 !.devcontainer/repo_config.example.json
+!.devcontainer/scripts/*
 
 !.vscode
 
