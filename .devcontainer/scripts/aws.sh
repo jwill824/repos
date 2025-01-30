@@ -4,26 +4,29 @@ setup_aws() {
     local account_dir="$1"
     local account_name="$(basename "$account_dir")"
     
-    # Only configure AWS for LeadingEdje workspace
-    if [[ "$account_name" != "leadingedje" ]]; then
+    # Get AWS config for account
+    local aws_config=$(jq -r ".$account_name.aws // empty" "$DEVCONTAINER_DIR/repo_config.json")
+    if [[ -z "$aws_config" ]] || [[ "$(echo "$aws_config" | jq -r '.enabled')" != "true" ]]; then
         return 0
     fi
     
-    log_info "Setting up AWS configuration for LeadingEdje workspace..."
+    log_info "Setting up AWS configuration for $account_name workspace..."
 
-    # Create workspace-specific AWS directories
-    local aws_dir="$account_dir/.aws"
-    local saml2aws_config="$account_dir/.saml2aws"
+    # Use predefined paths from devcontainer.json
+    local aws_dir="${AWS_CONFIG_DIR:-"$account_dir/.aws"}"
+    local saml2aws_config="${SAML2AWS_CONFIG:-"$account_dir/.saml2aws"}"
     
     rm -rf "$aws_dir"
     rm -f "$saml2aws_config"
     mkdir -p "$aws_dir"
 
-    install_aws_cli
-    install_saml2aws
+    # Install required tools
+    if [[ "$(echo "$aws_config" | jq -r '.saml.enabled')" == "true" ]]; then
+        install_saml2aws
+    fi
 
-    # Configure AWS configs
-    configure_aws_files "$aws_dir" "$saml2aws_config" "$account_dir"
+    # Configure AWS files
+    configure_aws_files "$aws_dir" "$saml2aws_config" "$account_dir" "$aws_config"
 }
 
 install_aws_cli() {
@@ -64,31 +67,24 @@ configure_aws_files() {
     local aws_dir="$1"
     local saml2aws_config="$2"
     local account_dir="$3"
+    local aws_config="$4"
+    
+    # Generate AWS CLI config - fixed format
+    for profile in $(echo "$aws_config" | jq -r '.profiles | keys[]'); do
+        local profile_config=$(echo "$aws_config" | jq -r ".profiles.${profile}")
+        {
+            echo "[profile ${profile}]"
+            echo "$profile_config" | jq -r 'to_entries | .[] | "\(.key) = \(.value)"'
+            echo ""
+        } >> "$aws_dir/config"
+    done
 
-    # AWS CLI config
-    cat > "$aws_dir/config" << EOF
-[profile development]
-region = us-east-2
-role_arn       = arn:aws:iam::702328517568:role/DevOpsRole
-output = json
-source_profile = le-sso
-EOF
-
-    # SAML2AWS config
-    cat > "$saml2aws_config" << EOF
-[default]
-app_id                  = 305541016011
-url                     = https://accounts.google.com/o/saml2/initsso?idpid=C035husfp&spid=305541016011
-username                = jeff.williams@leadingedje.com
-provider                = GoogleApps
-mfa                     = Auto
-skip_verify             = false
-timeout                 = 0
-aws_urn                 = urn:amazon:webservices
-aws_session_duration    = 43200
-aws_profile            = le-sso
-region                  = us-east-2
-EOF
+    # Generate SAML2AWS config if enabled
+    if [[ "$(echo "$aws_config" | jq -r '.saml.enabled')" == "true" ]]; then
+        local saml_config=$(echo "$aws_config" | jq -r '.saml')
+        echo "[default]" > "$saml2aws_config"
+        jq -r 'to_entries[] | select(.key != "enabled") | "\(.key) = \(.value)"' <<< "$saml_config" >> "$saml2aws_config"
+    fi
 
     # Workspace environment
     local workspace_env="$account_dir/.workspace_env"
@@ -108,4 +104,6 @@ if [[ \"\$PWD\" == \"$account_dir\"* ]] && [[ -f \"$workspace_env\" ]]; then
     source \"$workspace_env\"
 fi" >> ~/.bashrc
     fi
+    
+    log_success "AWS configuration completed for $account_dir"
 }

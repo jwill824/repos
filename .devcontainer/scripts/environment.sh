@@ -6,15 +6,6 @@ export ENV_FILE="$DEVCONTAINER_DIR/.env"
 setup_environment() {
     log_info "Setting up environment..."
     
-    # Create .env.example if needed
-    if [[ ! -f "$ENV_EXAMPLE" ]]; then
-        cat > "$ENV_EXAMPLE" << EOF
-# Anthropic API Key for AI-powered commit messages
-ANTHROPIC_API_KEY=your_api_key_here
-EOF
-        log_success "Created .env.example template"
-    fi
-    
     # Create .env if needed
     if [[ ! -f "$ENV_FILE" ]]; then
         cp "$ENV_EXAMPLE" "$ENV_FILE"
@@ -34,5 +25,21 @@ EOF
         else
             log_warning "ANTHROPIC_API_KEY not found in environment"
         fi
+    fi
+}
+
+setup_bashrc() {
+    local bashrc="$HOME/.bashrc"
+    if ! grep -q "source $ENV_FILE" "$bashrc"; then
+        cat >> "$bashrc" << EOF
+
+# Source devcontainer environment variables
+if [[ -f $ENV_FILE ]]; then
+    set -a
+    source $ENV_FILE
+    set +a
+fi
+EOF
+        log_success "Added environment sourcing to .bashrc"
     fi
 }

@@ -26,14 +26,6 @@ setup_python_venv() {
     cd "$project_dir" || return 1
     log_info "Setting up Python environment in $project_dir"
     
-    # Install build dependencies
-    if ! install_system_dependencies \
-        build-essential libssl-dev zlib1g-dev libbz2-dev \
-        libreadline-dev libsqlite3-dev curl python3-pip \
-        postgresql postgresql-contrib libpq-dev python3-dev; then
-        log_warning "Failed to install some build dependencies"
-    fi
-    
     install_pyenv
     install_poetry
     

@@ -29,4 +29,6 @@ $PYTHON_PATH /workspaces/repos/.devcontainer/prepare-commit-msg.py "$@" 2>> /tmp
 EXIT_CODE=$?
 echo "Python script exited with code: $EXIT_CODE" >> /tmp/git-hook-debug.log
 
+deactivate
+
 exit $EXIT_CODE

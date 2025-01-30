@@ -5,6 +5,8 @@
 !.gitignore
 !README.md
 
+.devcontainer
+
 # Ignore everything in .devcontainer except specific files
 .devcontainer/*
 !.devcontainer/devcontainer.json
