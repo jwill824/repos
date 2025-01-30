@@ -29,7 +29,7 @@ setup_local_git_config() {
     local hooks_dir="$repo_root/.git/hooks"
     mkdir -p "$hooks_dir"
     for hook in commit-msg pre-push prepare-commit-msg; do
-        cp "$DEVCONTAINER_DIR/$hook" "$hooks_dir/"
+        cp "$HOOKS_DIR/$hook" "$hooks_dir/"
         chmod 755 "$hooks_dir/$hook"
     done
     

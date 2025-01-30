@@ -4,6 +4,7 @@
 export WORKSPACE_ROOT="/workspaces/repos"
 export DEVCONTAINER_DIR="$WORKSPACE_ROOT/.devcontainer"
 export SCRIPTS_DIR="$DEVCONTAINER_DIR/scripts"
+export HOOKS_DIR="$DEVCONTAINER_DIR/hooks"
 export VENV_PATH="$WORKSPACE_ROOT/.venv"
 
 # Source all script files

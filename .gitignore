@@ -19,6 +19,7 @@
 !.devcontainer/git-new-branch.sh
 !.devcontainer/repo_config.example.json
 !.devcontainer/scripts/*
+!.devcontainer/hooks/*
 
 !.vscode
 
