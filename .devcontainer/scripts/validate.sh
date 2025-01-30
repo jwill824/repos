@@ -6,9 +6,9 @@ validate_requirements() {
     # Configuration files
     readonly CONFIG_FILES=(
         "$DEVCONTAINER_DIR/repo_config.json"
-        "$DEVCONTAINER_DIR/commit-msg"
-        "$DEVCONTAINER_DIR/pre-push"
-        "$DEVCONTAINER_DIR/prepare-commit-msg"
+        "$HOOKS_DIR/commit-msg"
+        "$HOOKS_DIR/pre-push"
+        "$HOOKS_DIR/prepare-commit-msg"
     )
     
     # Check required files
