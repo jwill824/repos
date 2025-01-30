@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# Log that we're starting
+echo "prepare-commit-msg hook starting..." >> /tmp/git-hook-debug.log
+echo "Args: $@" >> /tmp/git-hook-debug.log
+echo "PWD: $(pwd)" >> /tmp/git-hook-debug.log
+
+# Set up Python virtual environment in a writable location
+VENV_PATH="/workspaces/repos/.venv"
+python -m venv $VENV_PATH
+source $VENV_PATH/bin/activate
+
+# Verify aiohttp installation
+if ! python3 -c "import aiohttp" 2>/dev/null; then
+    echo "⚠️ Warning: aiohttp package not properly installed. Attempting to fix..."
+    pip install --force-reinstall aiohttp
+fi
+
+# Get the Python executable from the virtual environment
+PYTHON_PATH="/workspaces/repos/.venv/bin/python3"
+
+# Log Python path
+echo "Using Python: $PYTHON_PATH" >> /tmp/git-hook-debug.log
+
+# Run the actual Python script
+$PYTHON_PATH /workspaces/repos/.devcontainer/hooks/prepare-commit-msg.py "$@" 2>> /tmp/git-hook-debug.log
+
+# Log the exit code
+EXIT_CODE=$?
+echo "Python script exited with code: $EXIT_CODE" >> /tmp/git-hook-debug.log
+
+deactivate
+
+exit $EXIT_CODE

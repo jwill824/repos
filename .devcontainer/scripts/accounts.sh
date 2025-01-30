@@ -62,7 +62,7 @@ install_project_dependencies() {
     log_info "Checking for dependencies in $project_dir"
     
     if [[ -f "package.json" ]]; then
-        install_node_dependencies
+        npm install
     fi
     
     if [[ -f "pyproject.toml" ]] || [[ -f "requirements.txt" ]]; then
@@ -70,7 +70,7 @@ install_project_dependencies() {
     fi
     
     if [[ -f "Gemfile" ]]; then
-        install_ruby_dependencies
+        bundle install
     fi
     
     cd - > /dev/null

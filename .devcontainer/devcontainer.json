@@ -81,7 +81,8 @@
                 "stackbreak.comment-divider",
                 "ms-vscode.vscode-typescript-next",
                 "kddejong.vscode-cfn-lint",
-                "ms-vscode.powershell"
+                "ms-vscode.powershell",
+                "ms-vscode.vscode-node-azure-pack"
             ],
             "settings": {
                 "terraform.languageServer": {

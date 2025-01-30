@@ -18,7 +18,7 @@ EOF
     fi
     
     # Set up git alias
-    git config --global alias.new "!bash $WORKSPACE_ROOT/git-new-branch.sh"
+    git config --global alias.new "!bash $HOOKS_DIR/git-new-branch.sh"
     
     log_success "Workspace setup completed"
 }
