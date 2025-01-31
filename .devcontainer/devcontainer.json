@@ -25,6 +25,9 @@
         "ghcr.io/mikaello/devcontainer-features/modern-shell-utils:1.0.0": {},
         "ghcr.io/eitsupi/devcontainer-features/jq-likes:2": {},
         "ghcr.io/meaningful-ooo/devcontainer-features/homebrew:2": {},
+        "ghcr.io/rocker-org/devcontainer-features/apt-packages:1": {
+            "packages": "azure-functions-core-tools-4"
+        },
         "olliglorioso/git-completion/git-completion": "latest"
     },
     "appPort": [
