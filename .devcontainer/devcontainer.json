@@ -24,29 +24,20 @@
         "ghcr.io/dhoeric/features/terraform-docs:1": {},
         "ghcr.io/mikaello/devcontainer-features/modern-shell-utils:1.0.0": {},
         "ghcr.io/eitsupi/devcontainer-features/jq-likes:2": {},
-        "ghcr.io/meaningful-ooo/devcontainer-features/homebrew:2": {},
-        "ghcr.io/rocker-org/devcontainer-features/apt-packages:1": {
-            "packages": "azure-functions-core-tools-4"
-        },
         "olliglorioso/git-completion/git-completion": "latest"
     },
-    "appPort": [
-        "127.0.0.1:5173:5173",  // Localhost access
-        "0.0.0.0:5174:5173"     // External access on different port
+    "forwardPorts": [
+        5672,  // AMQP port
+        8080   // HTTP port
     ],
-    "forwardPorts": [5173],
     "portsAttributes": {
-        "5173": {
-            "label": "Vite Dev Server (localhost)",
-            "onAutoForward": "notify",
-            "protocol": "http"
+        "5672": {
+            "label": "Service Bus AMQP",
+            "onAutoForward": "notify"
         },
-        "5174": {
-            "label": "Vite Dev Server (external)",
-            "onAutoForward": "notify",
-            "protocol": "http",
-            "visibility": "public",
-            "hostIP": "0.0.0.0"
+        "8080": {
+            "label": "Service Bus HTTP",
+            "onAutoForward": "notify"
         }
     },
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind,consistency=cached",
@@ -106,14 +97,5 @@
             }
         }
     },
-    "postCreateCommand": "bash ${containerWorkspaceFolder}/.devcontainer/setup.sh",
-    "remoteEnv": {
-        "TF_LOG": "info",
-        "TF_LOG_PATH": ".terraform_devcontainer.log",
-        "HOST": "0.0.0.0",
-        "VITE_DEV_SERVER_HOST": "0.0.0.0",
-        "VITE_DEV_SERVER_PORT": "5173",
-        "CHOKIDAR_USEPOLLING": "true",
-        "VITE_HMR_HOST": "localhost"
-    }
+    "postCreateCommand": "bash ${containerWorkspaceFolder}/.devcontainer/setup.sh"
 }
