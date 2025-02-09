@@ -14,7 +14,7 @@ apt-get install -y --no-install-recommends \
     libxmlsec1-dev libffi-dev liblzma-dev curl git
 
 # Parse input versions and ensure at least one version is specified
-if [ -z "${VERSION}" ]; then
+if [ -z "${VERSIONS}" ]; then
     echo "Error: No Python version specified"
     exit 1
 fi
@@ -30,7 +30,7 @@ while IFS=',' read -ra VERSIONS; do
             PYTHON_VERSIONS+=("$v")
         fi
     done
-done <<< "${VERSION}"
+done <<< "${VERSIONS}"
 
 # Verify we have at least one version
 if [ ${#PYTHON_VERSIONS[@]} -eq 0 ]; then
