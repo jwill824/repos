@@ -26,20 +26,6 @@
         "ghcr.io/eitsupi/devcontainer-features/jq-likes:2": {},
         "olliglorioso/git-completion/git-completion": "latest"
     },
-    "forwardPorts": [
-        5672,  // AMQP port
-        8080   // HTTP port
-    ],
-    "portsAttributes": {
-        "5672": {
-            "label": "Service Bus AMQP",
-            "onAutoForward": "notify"
-        },
-        "8080": {
-            "label": "Service Bus HTTP",
-            "onAutoForward": "notify"
-        }
-    },
     "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/${localWorkspaceFolderBasename},type=bind,consistency=cached",
     "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
     "customizations": {
