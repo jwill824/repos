@@ -36,7 +36,7 @@ setup_account_repositories() {
             
             # Setup git and dependencies for existing repos
             find "$account_dir" -type d -name ".git" -exec dirname {} \; | while read -r repo_dir; do
-                setup_local_git_config "$repo_dir" "$git_email" "$git_name"
+                setup_local_git_config "$repo_dir" "$git_email" "$git_name" "$account"
                 install_project_dependencies "$repo_dir"
             done
             
@@ -48,7 +48,7 @@ setup_account_repositories() {
 
             # Setup git for directories containing .sln files
             find "$account_dir" -type f -name "*.sln" -exec dirname {} \; | while read -r sln_dir; do
-                setup_local_git_config "$sln_dir" "$git_email" "$git_name"
+                setup_local_git_config "$sln_dir" "$git_email" "$git_name" "$account"
                 configure_git_line_endings "$sln_dir" "true"
             done
         fi
