@@ -13,14 +13,10 @@ done
 
 # Main execution
 main() {
-    validate_requirements
-    setup_environment
-    setup_bashrc
     setup_workspace
     create_account_directories
     setup_vscode_workspace
     setup_account_repositories
-    setup_dotfiles_test_environment
     
     log_success "Workspace setup complete!"
 }

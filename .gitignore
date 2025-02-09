@@ -22,6 +22,7 @@
 !.devcontainer/hooks/*
 
 !.vscode
+!.github
 
 # Re-ignore any potential .git directories
 **/.git
