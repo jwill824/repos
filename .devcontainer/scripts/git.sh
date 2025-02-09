@@ -5,14 +5,6 @@ setup_global_git_config() {
     local git_name=$2
     git config --global user.email "$git_email"
     git config --global user.name "$git_name"
-
-    # Configure credential helper to store credentials
-    git config --global credential.helper store
-    git config --global credential.useHttpPath true
-    
-    # Let VS Code's credential helper handle default authentication
-    git config --global credential.https://github.com.username "$git_email"
-
     log_success "Global git config set up"
 }
 
@@ -59,6 +51,9 @@ configure_git_auth() {
         return
     fi
 
+    # Use Git Credential Manager for the repository
+    git -C "$repo_root" config --local credential.helper manager
+
     # Get account's git config
     local git_config=$(jq -r ".$account.git // empty" "$DEVCONTAINER_DIR/repo_config.json")
     if [[ -z "$git_config" ]]; then
@@ -66,7 +61,7 @@ configure_git_auth() {
     fi
 
     # Ensure credential helper is set for the repository
-    git -C "$repo_root" config --local credential.helper store
+    git -C "$repo_root" config --local credential.helper manager
     git -C "$repo_root" config --local credential.useHttpPath true
 
     # Configure based on provider
@@ -74,7 +69,7 @@ configure_git_auth() {
         local domain=$(echo "$git_config" | jq -r '.azure.domain')
         local username=$(echo "$git_config" | jq -r '.azure.username')
         if [[ -n "$username" ]] && [[ -n "$domain" ]]; then
-            git -C "$repo_root" config --local "credential.https://${domain}.helper" store
+            git -C "$repo_root" config --local "credential.https://${domain}.helper" manager
             git -C "$repo_root" config --local "credential.https://${domain}.username" "$username"
         fi
     elif [[ "$remote_url" =~ .*github.com.* ]]; then
@@ -83,9 +78,18 @@ configure_git_auth() {
         local org=$(echo "$remote_url" | sed -E 's#https://github.com/([^/]+)/.*#\1#')
         
         if [[ -n "$username" ]]; then
-            git -C "$repo_root" config --local "credential.https://github.com.helper" store
-            git -C "$repo_root" config --local "credential.https://github.com/$org.helper" store
-            git -C "$repo_root" config --local "credential.https://github.com/$org.username" "$username"
+            # Remove any existing credential configurations
+            git -C "$repo_root" config --local --unset-all "credential.https://github.com.username" || true
+            
+            # Set new credential configurations
+            git -C "$repo_root" config --local "credential.https://github.com.helper" manager
+            git -C "$repo_root" config --local "credential.https://github.com.username" "$username"
+            
+            # Ensure the remote URL is clean
+            if [[ "$remote_url" =~ .*@github.com.* ]]; then
+                local new_url="https://github.com/${org}/${remote_url##*/}"
+                git -C "$repo_root" config remote.origin.url "$new_url"
+            fi
         fi
     elif [[ "$remote_url" =~ .*bitbucket.org.* ]]; then
         local bitbucket_config=$(echo "$git_config" | jq -r '.bitbucket')
@@ -99,8 +103,8 @@ configure_git_auth() {
                 git -C "$repo_root" config remote.origin.url "$new_url"
             fi
             
-            git -C "$repo_root" config --local "credential.https://bitbucket.org.helper" store
-            git -C "$repo_root" config --local "credential.https://bitbucket.org/$team.helper" store
+            git -C "$repo_root" config --local "credential.https://bitbucket.org.helper" manager
+            git -C "$repo_root" config --local "credential.https://bitbucket.org/$team.helper" manager
             git -C "$repo_root" config --local "credential.https://bitbucket.org.username" "$username"
             git -C "$repo_root" config --local "credential.https://bitbucket.org/$team.username" "$username"
         fi
