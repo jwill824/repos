@@ -13,8 +13,30 @@ apt-get install -y --no-install-recommends \
     libncursesw5-dev xz-utils tk-dev libxml2-dev \
     libxmlsec1-dev libffi-dev liblzma-dev curl git
 
-# Parse input versions
-IFS=',' read -ra PYTHON_VERSIONS <<< "${VERSION}"
+# Parse input versions and ensure at least one version is specified
+if [ -z "${VERSION}" ]; then
+    echo "Error: No Python version specified"
+    exit 1
+fi
+
+# Convert comma-separated string to array
+PYTHON_VERSIONS=()
+while IFS=',' read -ra VERSIONS; do
+    for v in "${VERSIONS[@]}"; do
+        # Trim whitespace
+        v="${v## }"
+        v="${v%% }"
+        if [ ! -z "$v" ]; then
+            PYTHON_VERSIONS+=("$v")
+        fi
+    done
+done <<< "${VERSION}"
+
+# Verify we have at least one version
+if [ ${#PYTHON_VERSIONS[@]} -eq 0 ]; then
+    echo "Error: No valid Python versions found in input"
+    exit 1
+fi
 
 # Install pyenv
 export PYENV_ROOT="/usr/local/pyenv"
