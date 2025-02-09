@@ -1,9 +1,18 @@
 name: 'build' 
-on: # rebuild any PRs and main branch changes
+on: # rebuild only when devcontainer files change
   pull_request:
+    paths:
+      - '.github/.devcontainer/**'
   push:
     branches:
       - main
+    paths:
+      - '.github/.devcontainer/**'
+
+# Add permissions block
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   build:
