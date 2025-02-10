@@ -31,10 +31,6 @@
     },
     "./local-features/pester": {},
     "./local-features/bats": {},
-    "./local-features/env": {
-      "githubRepo": "${localEnv:GITHUB_REPOSITORY}",
-      "envFile": "/usr/local/etc/devcontainer.env"
-    },
     "./local-features/gcm": {
       "credentialStore": "gpg"
     }

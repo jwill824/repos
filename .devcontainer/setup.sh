@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Logging
+log_info() { echo "ℹ️ $*"; }
+log_success() { echo "✓ $*"; }
+log_warning() { echo "⚠️ $*"; }
+log_error() { echo "❌ $*" >&2; }
+
 # Constants
 export WORKSPACE_ROOT="/workspaces/repos"
 export DEVCONTAINER_DIR="$WORKSPACE_ROOT/.devcontainer"
