@@ -1,5 +1,5 @@
 {
-  "name": "Developer Workspace",
+  "name": "Ultimate Developer Workspace",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
   // https://containers.dev/features
   "features": {
