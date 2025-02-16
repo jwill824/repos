@@ -1,0 +1,10 @@
+{
+    "name": "Commitizen",
+    "id": "commitizen",
+    "version": "1.0.0",
+    "description": "Installs Commitizen",
+    "options": {},
+    "installsAfter": [
+        "ghcr.io/devcontainers/features/node"
+    ]
+}

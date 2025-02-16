@@ -41,9 +41,8 @@
     },
     "./local-features/npm": {
       // https://biomejs.dev/
-      // https://commitizen-tools.github.io/commitizen/
-      // https://cz-git.qbb.sh/
-      "packages": "@biomejs/biome,commitzen,cz-git"
-    }
+      "packages": "@biomejs/biome"
+    },
+    "./local-features/commitizen": {}
   }
 }
