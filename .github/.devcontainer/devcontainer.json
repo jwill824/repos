@@ -43,7 +43,7 @@
       // https://biomejs.dev/
       // https://commitizen-tools.github.io/commitizen/
       // https://cz-git.qbb.sh/
-      "packages": "biomejs,commitzen,cz-git"
+      "packages": "@biomejs/biome,commitzen,cz-git"
     }
   }
 }
