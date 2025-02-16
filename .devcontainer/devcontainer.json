@@ -23,11 +23,11 @@
         "Postman.postman-for-vscode",
         "tonybaloney.vscode-pets",
         "spmeesseman.vscode-taskexplorer",
-        "christian-kohler.npm-intellisense",
         "donjayamanne.githistory",
         "mechatroner.rainbow-csv",
         "editorconfig.editorconfig",
-        "bradlc.vscode-tailwindcss"
+        "bradlc.vscode-tailwindcss",
+        "vivaxy.vscode-conventional-commits"
       ],
       "settings": {
         "editor.defaultFormatter": "biomejs.biome",

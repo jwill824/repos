@@ -19,13 +19,8 @@ setup_local_git_config() {
     git -C "$repo_root" config --local user.email "$git_email"
     git -C "$repo_root" config --local user.name "$git_name"
 
-    # Setup hooks
-    local hooks_dir="$repo_root/.git/hooks"
-    mkdir -p "$hooks_dir"
-    for hook in commit-msg pre-push prepare-commit-msg; do
-        cp "$HOOKS_DIR/$hook" "$hooks_dir/"
-        chmod 755 "$hooks_dir/$hook"
-    done
+    # Setup pre-commit configuration
+    setup_pre_commit "$repo_root"
     
     # Enable path-specific credentials
     git -C "$repo_root" config --local credential.useHttpPath true
@@ -34,6 +29,100 @@ setup_local_git_config() {
     configure_git_auth "$repo_root" "$account"
     
     log_success "Git config set up for $repo_root"
+}
+
+generate_pre_commit_config() {
+    local hooks_dir=$1
+    local config=""
+    
+    # Start with standard hooks
+    config=$(cat <<-EOF
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: debug-statements
+      - id: double-quote-string-fixer
+      - id: name-tests-test
+      - id: requirements-txt-fixer
+  - repo: local
+    hooks:
+EOF
+)
+
+    # Find all hook files and sort them
+    for hook_file in "$hooks_dir"/pre-*-*; do
+        if [ -f "$hook_file" ]; then
+            # Extract hook type and name from filename
+            filename=$(basename "$hook_file")
+            hook_type=$(echo "$filename" | cut -d'-' -f1)
+            hook_name=$(echo "$filename" | cut -d'-' -f2-)
+            
+            # Generate hook configuration
+            config+=$(cat <<-EOF
+
+      - id: $hook_name
+        name: $hook_name
+        entry: $hook_file
+        language: script
+        stages: [$hook_type]
+        pass_filenames: false
+EOF
+)
+        fi
+    done
+    
+    echo "$config"
+}
+
+setup_pre_commit() {
+    local repo_root=$1
+    local hooks_dir="$DEVCONTAINER_DIR/hooks"
+    local repo_config_file="$repo_root/.pre-commit-config.yaml"
+    local workspace_root="/workspaces/repos"
+
+    # Generate pre-commit config
+    generate_pre_commit_config "$hooks_dir" > "$repo_config_file"
+
+    # Add .pre-commit-config.yaml to .gitignore if not already present
+    if ! grep -q "^\.pre-commit-config\.yaml$" "$repo_root/.gitignore" 2>/dev/null; then
+        echo ".pre-commit-config.yaml" >> "$repo_root/.gitignore"
+    fi
+
+    # Dynamically determine hook types from files
+    local hook_types=$(find "$hooks_dir" -name "pre-*-*" -exec basename {} \; | cut -d'-' -f1 | sort -u | tr '\n' ' ')
+    
+    # Install pre-commit hooks for each type found
+    local install_cmd="cd $repo_root && pre-commit install"
+    for hook_type in $hook_types; do
+        install_cmd+=" --hook-type $hook_type"
+    done
+    eval "$install_cmd"
+
+    # If this is not the workspace root, also set up hooks there
+    if [ "$repo_root" != "$workspace_root" ]; then
+        # Copy config to workspace root
+        cp "$repo_config_file" "$workspace_root/.pre-commit-config.yaml"
+        
+        # Add to workspace root's gitignore
+        if ! grep -q "^\.pre-commit-config\.yaml$" "$workspace_root/.gitignore" 2>/dev/null; then
+            echo ".pre-commit-config.yaml" >> "$workspace_root/.gitignore"
+        fi
+        
+        # Install hooks in workspace root
+        local workspace_install_cmd="cd $workspace_root && pre-commit install"
+        for hook_type in $hook_types; do
+            workspace_install_cmd+=" --hook-type $hook_type"
+        done
+        eval "$workspace_install_cmd"
+        
+        log_success "Pre-commit hooks configured for workspace root"
+    fi
+
+    log_success "Pre-commit hooks configured for $repo_root"
 }
 
 configure_git_line_endings() {

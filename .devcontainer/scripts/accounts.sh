@@ -77,6 +77,31 @@ install_project_dependencies() {
     log_success "Dependency installation completed for $project_dir"
 }
 
+get_python_version() {
+    local project_dir="$1"
+    local pyproject_file="$project_dir/pyproject.toml"
+    local default_version=$(pyenv latest --known 3)  # Use latest installed 3.x version as default
+
+    if [[ ! -f "$pyproject_file" ]]; then
+        echo "$default_version"
+        return
+    fi
+
+    # Try to parse python version from pyproject.toml
+    local python_version
+    if python_version=$(grep -A5 '^\[tool\.poetry\]' "$pyproject_file" | grep 'python' | sed -E 's/.*"^\^?([0-9]+\.[0-9]+(\.[0-9]+)?)"$/\1/'); then
+        # Check if we have a compatible installed version
+        local installed_version=$(pyenv versions --bare | grep "^$python_version" | sort -V | tail -n1)
+        if [[ -n "$installed_version" ]]; then
+            echo "$installed_version"
+        else
+            echo "$python_version"
+        fi
+    else
+        echo "$default_version"
+    fi
+}
+
 setup_python_venv() {
     local project_dir="$1"
     
@@ -85,10 +110,10 @@ setup_python_venv() {
         return 0
     fi
     
-    # Find nearest pyproject.toml
+    # Find nearest pyproject.toml or requirements.txt
     local current_dir="$project_dir"
     while [[ "$current_dir" != "/" ]]; do
-        if [[ -f "$current_dir/pyproject.toml" ]]; then
+        if [[ -f "$current_dir/pyproject.toml" ]] || [[ -f "$current_dir/requirements.txt" ]]; then
             project_dir="$current_dir"
             break
         fi
@@ -96,18 +121,41 @@ setup_python_venv() {
     done
     
     if [[ "$project_dir" == "/" ]]; then
-        log_error "Could not find pyproject.toml in parent directories"
+        log_error "Could not find Python project files in parent directories"
         return 1
     fi
     
     cd "$project_dir" || return 1
     log_info "Setting up Python environment in $project_dir"
     
+    # Get Python version from pyproject.toml or use default
+    local python_version=$(get_python_version "$project_dir")
+    log_info "Using Python version: $python_version"
+    
+    # Only install if version is not already installed
+    if ! pyenv versions --bare | grep -q "^$python_version"; then
+        log_info "Installing Python $python_version..."
+        pyenv install -s "$python_version"
+    fi
+    
+    # Create virtual environment using pyenv
+    local venv_name=$(basename "$project_dir")
+    pyenv virtualenv "$python_version" "$venv_name" 2>/dev/null || true
+    pyenv local "$venv_name"
+    
+    # Install dependencies
+    if [[ -f "requirements.txt" ]]; then
+        pip install -r requirements.txt
+    elif [[ -f "pyproject.toml" ]]; then
+        pip install -e .
+    fi
+    
     # Create activation script
     local activate_script="$project_dir/activate_venv.sh"
     cat > "$activate_script" << EOF
 #!/bin/bash
-source \$(poetry env info --path)/bin/activate
+eval "\$(pyenv init -)"
+pyenv activate $venv_name
 EOF
     chmod +x "$activate_script"
     

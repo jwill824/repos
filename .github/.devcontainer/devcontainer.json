@@ -1,3 +1,4 @@
+// https://containers.dev/guide/prebuild
 {
   "name": "Ultimate Developer Workspace",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
@@ -27,12 +28,22 @@
     "./local-features/python": {
       "versions": "3.9,3.12",
       "installPoetry": true,
-      "toolsToInstall": "ruff,uv,pytest"
+      // https://github.com/astral-sh/ruff
+      // https://astral.sh/blog/uv
+      // https://docs.pytest.org/en/stable/
+      // https://pre-commit.com/#usage
+      "toolsToInstall": "ruff,uv,pytest,pre-commit"
     },
     "./local-features/pester": {},
     "./local-features/bats": {},
     "./local-features/gcm": {
       "credentialStore": "gpg"
+    },
+    "./local-features/npm": {
+      // https://biomejs.dev/
+      // https://commitizen-tools.github.io/commitizen/
+      // https://cz-git.qbb.sh/
+      "packages": "biomejs,commitzen,cz-git"
     }
   }
 }
