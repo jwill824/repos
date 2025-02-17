@@ -2,10 +2,10 @@
 
 create_account_directories() {
     log_info "Creating account directories..."
-    
+
     # Get all account names (excluding 'default')
     local accounts=($(jq -r 'keys[] | select(. != "default")' "$DEVCONTAINER_DIR/repo_config.json"))
-    
+
     # Create directories for each account
     for account in "${accounts[@]}"; do
         local account_dir="$WORKSPACE_ROOT/$account"
@@ -21,25 +21,25 @@ setup_account_repositories() {
 
     # Setup global git config
     setup_global_git_config "$(jq -r '.default.git.user.email' "$DEVCONTAINER_DIR/repo_config.json")" "$(jq -r '.default.git.user.name' "$DEVCONTAINER_DIR/repo_config.json")"
-    
+
     # Process each account from config (excluding default)
     jq -r 'keys[] | select(. != "default")' "$DEVCONTAINER_DIR/repo_config.json" | while read -r account; do
         local account_dir="$WORKSPACE_ROOT/$account"
         local config=$(jq -r ".$account" "$DEVCONTAINER_DIR/repo_config.json")
         local git_email=$(echo "$config" | jq -r '.git.user.email')
         local git_name=$(echo "$config" | jq -r '.git.user.name')
-        
+
         log_info "Setting up repositories for $account..."
-        
+
         if [[ -d "$account_dir" ]]; then
             setup_aws "$account_dir"
-            
+
             # Setup git and dependencies for existing repos
             find "$account_dir" -type d -name ".git" -exec dirname {} \; | while read -r repo_dir; do
                 setup_local_git_config "$repo_dir" "$git_email" "$git_name" "$account"
                 install_project_dependencies "$repo_dir"
             done
-            
+
             # Setup Python projects
             find "$account_dir" -type f \( -name "pyproject.toml" -o -name "requirements.txt" \) -exec dirname {} \; | while read -r python_dir; do
                 log_info "Found Python project in: $python_dir"
@@ -58,21 +58,21 @@ setup_account_repositories() {
 install_project_dependencies() {
     local project_dir="$1"
     cd "$project_dir" || return 1
-    
+
     log_info "Checking for dependencies in $project_dir"
-    
+
     if [[ -f "package.json" ]]; then
         npm install
     fi
-    
+
     if [[ -f "pyproject.toml" ]] || [[ -f "requirements.txt" ]]; then
         setup_python_venv "$project_dir"
     fi
-    
+
     if [[ -f "Gemfile" ]]; then
         bundle install
     fi
-    
+
     cd - > /dev/null
     log_success "Dependency installation completed for $project_dir"
 }
@@ -80,7 +80,7 @@ install_project_dependencies() {
 get_python_version() {
     local project_dir="$1"
     local pyproject_file="$project_dir/pyproject.toml"
-    local default_version=$(pyenv latest --known 3)  # Use latest installed 3.x version as default
+    local default_version=$(pyenv latest --known 3)
 
     if [[ ! -f "$pyproject_file" ]]; then
         echo "$default_version"
@@ -104,12 +104,12 @@ get_python_version() {
 
 setup_python_venv() {
     local project_dir="$1"
-    
+
     # Skip if inside virtual environment
     if [[ "$project_dir" == *"/.venv/"* ]]; then
         return 0
     fi
-    
+
     # Find nearest pyproject.toml or requirements.txt
     local current_dir="$project_dir"
     while [[ "$current_dir" != "/" ]]; do
@@ -119,65 +119,99 @@ setup_python_venv() {
         fi
         current_dir="$(dirname "$current_dir")"
     done
-    
+
     if [[ "$project_dir" == "/" ]]; then
         log_error "Could not find Python project files in parent directories"
         return 1
     fi
-    
+
     cd "$project_dir" || return 1
     log_info "Setting up Python environment in $project_dir"
-    
-    # Get Python version from pyproject.toml or use default
-    local python_version=$(get_python_version "$project_dir")
+
+    # Fix pyenv permissions
+    sudo chown -R "$(whoami)" /usr/local/pyenv
+    sudo chmod -R u+w /usr/local/pyenv
+
+    # Get Python version from pyproject.toml or use latest
+    local python_version
+    if [[ -f "pyproject.toml" ]]; then
+        python_version=$(get_python_version "$project_dir")
+    else
+        python_version=$(pyenv latest --known 3)
+    fi
     log_info "Using Python version: $python_version"
-    
-    # Only install if version is not already installed
-    if ! pyenv versions --bare | grep -q "^$python_version"; then
+
+    # Update .python-version file
+    echo "$python_version" > .python-version
+
+    # Install Python version if needed
+    if ! pyenv versions --bare | grep -q "^$python_version$"; then
         log_info "Installing Python $python_version..."
         pyenv install -s "$python_version"
     fi
-    
-    # Create virtual environment using pyenv
+
+    # Create virtualenv
     local venv_name=$(basename "$project_dir")
-    pyenv virtualenv "$python_version" "$venv_name" 2>/dev/null || true
+    eval "$(pyenv init -)"
+    eval "$(pyenv virtualenv-init -)"
+
+    # Delete existing virtualenv if it exists
+    pyenv virtualenv-delete -f "$venv_name" 2>/dev/null || true
+
+    # Create new virtualenv and set it as local
+    pyenv virtualenv "$python_version" "$venv_name"
     pyenv local "$venv_name"
-    
+
+    # Activate virtualenv
+    pyenv activate "$venv_name"
+
+    # Upgrade pip
+    pip install --upgrade pip
+
     # Install dependencies
     if [[ -f "requirements.txt" ]]; then
         pip install -r requirements.txt
     elif [[ -f "pyproject.toml" ]]; then
-        pip install -e .
+        if grep -q "poetry" pyproject.toml; then
+            pip install poetry
+            poetry install
+        else
+            pip install -e .
+        fi
     fi
-    
+
     # Create activation script
     local activate_script="$project_dir/activate_venv.sh"
     cat > "$activate_script" << EOF
 #!/bin/bash
 eval "\$(pyenv init -)"
+eval "\$(pyenv virtualenv-init -)"
 pyenv activate $venv_name
 EOF
     chmod +x "$activate_script"
-    
+
+    # Deactivate virtualenv
+    pyenv deactivate
+
     cd - > /dev/null
 }
 
 setup_aws() {
     local account_dir="$1"
     local account_name="$(basename "$account_dir")"
-    
+
     # Get AWS config for account
     local aws_config=$(jq -r ".$account_name.aws // empty" "$DEVCONTAINER_DIR/repo_config.json")
     if [[ -z "$aws_config" ]] || [[ "$(echo "$aws_config" | jq -r '.enabled')" != "true" ]]; then
         return 0
     fi
-    
+
     log_info "Setting up AWS configuration for $account_name workspace..."
 
     # Use predefined paths from devcontainer.json
     local aws_dir="${AWS_CONFIG_DIR:-"$account_dir/.aws"}"
     local saml2aws_config="${SAML2AWS_CONFIG:-"$account_dir/.saml2aws"}"
-    
+
     rm -rf "$aws_dir"
     rm -f "$saml2aws_config"
     mkdir -p "$aws_dir"
@@ -209,7 +243,7 @@ configure_aws_files() {
     local saml2aws_config="$2"
     local account_dir="$3"
     local aws_config="$4"
-    
+
     # Generate AWS CLI config - fixed format
     for profile in $(echo "$aws_config" | jq -r '.profiles | keys[]'); do
         local profile_config=$(echo "$aws_config" | jq -r ".profiles.${profile}")
@@ -245,6 +279,6 @@ if [[ \"\$PWD\" == \"$account_dir\"* ]] && [[ -f \"$workspace_env\" ]]; then
     source \"$workspace_env\"
 fi" >> ~/.bashrc
     fi
-    
+
     log_success "AWS configuration completed for $account_dir"
 }

@@ -26,7 +26,7 @@
     "olliglorioso/git-completion/git-completion": "latest",
     "ghcr.io/jlaundry/devcontainer-features/azure-functions-core-tools:1": {},
     "./local-features/python": {
-      "versions": "3.9,3.12",
+      "versions": "3.9,3.12,3.13",
       "installPoetry": true,
       // https://github.com/astral-sh/ruff
       // https://astral.sh/blog/uv

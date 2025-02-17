@@ -20,3 +20,4 @@
 
 # Re-ignore any potential .git directories
 **/.git
+.pre-commit-config.yaml
