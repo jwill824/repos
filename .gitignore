@@ -18,6 +18,8 @@
 !.vscode
 !.github
 
+!commitlint.config.js
+
 # Re-ignore any potential .git directories
 **/.git
 .pre-commit-config.yaml
