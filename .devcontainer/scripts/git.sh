@@ -92,8 +92,8 @@ setup_pre_commit() {
     fi
 
     # Get unique hook types from filenames
-    local hook_types=($(find "$hooks_dir" -name "pre-*-*" -type f -exec basename {} \; | \
-                       cut -d'-' -f1,2 | sort -u))
+    local hook_types
+    hook_types=$(find "$hooks_dir" -name "pre-*-*" -type f -exec basename {} \; | cut -d'-' -f1,2 | sort -u)
 
     # Install each hook type
     for hook_type in "${hook_types[@]}"; do
@@ -113,7 +113,8 @@ configure_git_line_endings() {
 configure_git_auth() {
     local repo_root=$1
     local account=$2
-    local remote_url=$(git -C "$repo_root" config --get remote.origin.url)
+    local remote_url
+    remote_url=$(git -C "$repo_root" config --get remote.origin.url)
     if [[ -z "$remote_url" ]]; then
         return
     fi
@@ -122,7 +123,8 @@ configure_git_auth() {
     git -C "$repo_root" config --local credential.helper manager
 
     # Get account's git config
-    local git_config=$(jq -r ".$account.git // empty" "$DEVCONTAINER_DIR/repo_config.json")
+    local git_config
+    git_config=$(jq -r ".$account.git // empty" "$DEVCONTAINER_DIR/repo_config.json")
     if [[ -z "$git_config" ]]; then
         return
     fi
@@ -133,16 +135,22 @@ configure_git_auth() {
 
     # Configure based on provider
     if [[ "$remote_url" =~ .*visualstudio.com.* ]] || [[ "$remote_url" =~ .*azure.com.* ]]; then
-        local domain=$(echo "$git_config" | jq -r '.azure.domain')
-        local username=$(echo "$git_config" | jq -r '.azure.username')
+        local domain
+        local username
+        domain=$(echo "$git_config" | jq -r '.azure.domain')
+        username=$(echo "$git_config" | jq -r '.azure.username')
         if [[ -n "$username" ]] && [[ -n "$domain" ]]; then
             git -C "$repo_root" config --local "credential.https://${domain}.helper" manager
             git -C "$repo_root" config --local "credential.https://${domain}.username" "$username"
         fi
     elif [[ "$remote_url" =~ .*github.com.* ]]; then
-        local github_config=$(echo "$git_config" | jq -r '.github')
-        local username=$(echo "$github_config" | jq -r '.username')
-        local org=$(echo "$remote_url" | sed -E 's#https://github.com/([^/]+)/.*#\1#')
+        local github_config
+        local username
+        local org
+
+        github_config=$(echo "$git_config" | jq -r '.github')
+        username=$(echo "$github_config" | jq -r '.username')
+        org=$(echo "$remote_url" | sed -E 's#https://github.com/([^/]+)/.*#\1#')
 
         if [[ -n "$username" ]]; then
             # Remove any existing credential configurations
@@ -159,9 +167,13 @@ configure_git_auth() {
             fi
         fi
     elif [[ "$remote_url" =~ .*bitbucket.org.* ]]; then
-        local bitbucket_config=$(echo "$git_config" | jq -r '.bitbucket')
-        local username=$(echo "$bitbucket_config" | jq -r '.username')
-        local team=$(echo "$remote_url" | sed -E 's#https://[^@]*@?bitbucket.org/([^/]+)/.*#\1#')
+        local bitbucket_config
+        local username
+        local team
+
+        bitbucket_config=$(echo "$git_config" | jq -r '.bitbucket')
+        username=$(echo "$bitbucket_config" | jq -r '.username')
+        team=$(echo "$remote_url" | sed -E 's#https://[^@]*@?bitbucket.org/([^/]+)/.*#\1#')
 
         if [[ -n "$username" ]]; then
             # Update remote URL to include username if not present

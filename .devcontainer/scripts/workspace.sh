@@ -27,7 +27,8 @@ setup_vscode_workspace() {
     log_info "Setting up VS Code workspace..."
     local workspace_file="$WORKSPACE_ROOT/Repos.code-workspace"
 
-    local folders_json=$(jq -r '
+    local folders_json
+    folders_json=$(jq -r '
         [
             {
                 name: "root",

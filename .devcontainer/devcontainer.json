@@ -27,7 +27,8 @@
         "mechatroner.rainbow-csv",
         "editorconfig.editorconfig",
         "bradlc.vscode-tailwindcss",
-        "vivaxy.vscode-conventional-commits"
+        "vivaxy.vscode-conventional-commits",
+        "gera2ld.markmap-vscode"
       ],
       "settings": {
         "editor.defaultFormatter": "biomejs.biome",

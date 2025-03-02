@@ -4,7 +4,8 @@ create_account_directories() {
     log_info "Creating account directories..."
 
     # Get all account names (excluding 'default')
-    local accounts=($(jq -r 'keys[] | select(. != "default")' "$DEVCONTAINER_DIR/repo_config.json"))
+    local accounts
+    accounts=$(jq -r 'keys[] | select(. != "default")' "$DEVCONTAINER_DIR/repo_config.json")
 
     # Create directories for each account
     for account in "${accounts[@]}"; do
@@ -24,10 +25,15 @@ setup_account_repositories() {
 
     # Process each account from config (excluding default)
     jq -r 'keys[] | select(. != "default")' "$DEVCONTAINER_DIR/repo_config.json" | while read -r account; do
-        local account_dir="$WORKSPACE_ROOT/$account"
-        local config=$(jq -r ".$account" "$DEVCONTAINER_DIR/repo_config.json")
-        local git_email=$(echo "$config" | jq -r '.git.user.email')
-        local git_name=$(echo "$config" | jq -r '.git.user.name')
+        local account_dir
+        local config
+        local git_email
+        local git_name
+
+        account_dir="$WORKSPACE_ROOT/$account"
+        config=$(jq -r ".$account" "$DEVCONTAINER_DIR/repo_config.json")
+        git_email=$(echo "$config" | jq -r '.git.user.email')
+        git_name=$(echo "$config" | jq -r '.git.user.name')
 
         log_info "Setting up repositories for $account..."
 
@@ -41,7 +47,11 @@ setup_account_repositories() {
             done
 
             # Setup Python projects
-            find "$account_dir" -type f \( -name "pyproject.toml" -o -name "requirements.txt" \) -exec dirname {} \; | while read -r python_dir; do
+            find "$account_dir" -type f \( -name "pyproject.toml" -o -name "requirements.txt" \) \
+                -not -path "*/\.*/*" \
+                -not -path "*/vendor/*" \
+                -not -path "*/node_modules/*" \
+                -exec dirname {} \; | while read -r python_dir; do
                 log_info "Found Python project in: $python_dir"
                 setup_python_venv "$python_dir"
             done
@@ -73,30 +83,30 @@ install_project_dependencies() {
         bundle install
     fi
 
-    cd - > /dev/null
+    cd - > /dev/null || exit
     log_success "Dependency installation completed for $project_dir"
 }
 
 get_python_version() {
     local project_dir="$1"
     local pyproject_file="$project_dir/pyproject.toml"
-    local default_version=$(pyenv latest --known 3)
+    local default_version
+    default_version=$(pyenv latest --known 3)
 
     if [[ ! -f "$pyproject_file" ]]; then
         echo "$default_version"
         return
     fi
 
-    # Try to parse python version from pyproject.toml
-    local python_version
-    if python_version=$(grep -A5 '^\[tool\.poetry\]' "$pyproject_file" | grep 'python' | sed -E 's/.*"^\^?([0-9]+\.[0-9]+(\.[0-9]+)?)"$/\1/'); then
-        # Check if we have a compatible installed version
-        local installed_version=$(pyenv versions --bare | grep "^$python_version" | sort -V | tail -n1)
-        if [[ -n "$installed_version" ]]; then
-            echo "$installed_version"
-        else
-            echo "$python_version"
-        fi
+    local version=""
+    if command -v toml >/dev/null 2>&1; then
+        version=$(toml get "$pyproject_file" "tool.poetry.dependencies.python" 2>/dev/null | tr -d '"^=' || echo "")
+    else
+        version=$(grep -A5 '^\[tool\.poetry\.dependencies\]' "$pyproject_file" | grep '^python = ' | cut -d'"' -f2 | tr -d '^=' || echo "")
+    fi
+
+    if [[ -n "$version" ]]; then
+        echo "$version"
     else
         echo "$default_version"
     fi
@@ -105,8 +115,11 @@ get_python_version() {
 setup_python_venv() {
     local project_dir="$1"
 
-    # Skip if inside virtual environment
-    if [[ "$project_dir" == *"/.venv/"* ]]; then
+    # Skip if already in a virtual environment or if the path contains dependency directories
+    if [[ "$VIRTUAL_ENV" != "" ]] || \
+       [[ "$project_dir" == *"/.venv/"* ]] || \
+       [[ "$project_dir" == */vendor/* ]] || \
+       [[ "$project_dir" == */node_modules/* ]]; then
         return 0
     fi
 
@@ -126,32 +139,20 @@ setup_python_venv() {
     fi
 
     cd "$project_dir" || return 1
-    log_info "Setting up Python environment in $project_dir"
 
-    # Fix pyenv permissions
-    sudo chown -R "$(whoami)" /usr/local/pyenv
-    sudo chmod -R u+w /usr/local/pyenv
+    # Get Python version and create venv
+    python_version=$(get_python_version "$project_dir")
+    log_info "Setting up Python environment with version $python_version"
 
-    # Get Python version from pyproject.toml or use latest
-    local python_version
-    if [[ -f "pyproject.toml" ]]; then
-        python_version=$(get_python_version "$project_dir")
-    else
-        python_version=$(pyenv latest --known 3)
-    fi
-    log_info "Using Python version: $python_version"
+    # Make sure Python version is installed
+    pyenv install -s "$python_version"
 
-    # Update .python-version file
+    # Write clean version to file
     echo "$python_version" > .python-version
 
-    # Install Python version if needed
-    if ! pyenv versions --bare | grep -q "^$python_version$"; then
-        log_info "Installing Python $python_version..."
-        pyenv install -s "$python_version"
-    fi
-
     # Create virtualenv
-    local venv_name=$(basename "$project_dir")
+    local venv_name
+    venv_name=$(basename "$project_dir")
     eval "$(pyenv init -)"
     eval "$(pyenv virtualenv-init -)"
 
@@ -193,15 +194,16 @@ EOF
     # Deactivate virtualenv
     pyenv deactivate
 
-    cd - > /dev/null
+    cd - > /dev/null || exit
 }
 
 setup_aws() {
     local account_dir="$1"
-    local account_name="$(basename "$account_dir")"
+    local account_name
+    account_name="$(basename "$account_dir")"
 
     # Get AWS config for account
-    local aws_config=$(jq -r ".$account_name.aws // empty" "$DEVCONTAINER_DIR/repo_config.json")
+    local aws_config
     if [[ -z "$aws_config" ]] || [[ "$(echo "$aws_config" | jq -r '.enabled')" != "true" ]]; then
         return 0
     fi
@@ -246,7 +248,8 @@ configure_aws_files() {
 
     # Generate AWS CLI config - fixed format
     for profile in $(echo "$aws_config" | jq -r '.profiles | keys[]'); do
-        local profile_config=$(echo "$aws_config" | jq -r ".profiles.${profile}")
+        local profile_config
+        profile_config=$(echo "$aws_config" | jq -r ".profiles.${profile}")
         {
             echo "[profile ${profile}]"
             echo "$profile_config" | jq -r 'to_entries | .[] | "\(.key) = \(.value)"'
@@ -256,7 +259,8 @@ configure_aws_files() {
 
     # Generate SAML2AWS config if enabled
     if [[ "$(echo "$aws_config" | jq -r '.saml.enabled')" == "true" ]]; then
-        local saml_config=$(echo "$aws_config" | jq -r '.saml')
+        local saml_config
+        saml_config=$(echo "$aws_config" | jq -r '.saml')
         echo "[default]" > "$saml2aws_config"
         jq -r 'to_entries[] | select(.key != "enabled") | "\(.key) = \(.value)"' <<< "$saml_config" >> "$saml2aws_config"
     fi
