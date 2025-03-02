@@ -286,3 +286,159 @@ fi" >> ~/.bashrc
 
     log_success "AWS configuration completed for $account_dir"
 }
+
+setup_sqlserver_auth() {
+    log_info "Setting up SQL Server authentication..."
+
+    local accounts_with_sql
+    accounts_with_sql=$(jq -r 'to_entries[] | select(.value.sqlserver) | .key' "$DEVCONTAINER_DIR/repo_config.json")
+
+    if [[ -z "$accounts_with_sql" ]]; then
+        return 0
+    fi
+
+    # Install common dependencies
+    sudo apt-get update && sudo apt-get install -y \
+        curl \
+        unixodbc-dev \
+        azure-cli
+
+    while IFS= read -r account; do
+        local config
+        config=$(jq -r ".$account.sqlserver" "$DEVCONTAINER_DIR/repo_config.json")
+
+        # Setup Windows Auth if configured
+        if [[ $(echo "$config" | jq -r '.windows_auth // empty') != null ]]; then
+            setup_windows_auth "$account" "$config"
+        fi
+
+        # Setup Entra Auth if configured
+        if [[ $(echo "$config" | jq -r '.entra_auth // empty') != null ]]; then
+            setup_entra_auth "$account" "$config"
+        fi
+    done <<< "$accounts_with_sql"
+
+    log_success "SQL Server authentication setup completed"
+}
+
+setup_windows_auth() {
+    local account="$1"
+    local config="$2"
+
+    # Install Kerberos
+    sudo apt-get install -y \
+        krb5-user \
+        krb5-config \
+        libpam-krb5
+
+    local domain
+    domain=$(echo "$config" | jq -r '.windows_auth.domain')
+    local account_dir="$WORKSPACE_ROOT/$account"
+
+    configure_kerberos "$account_dir" "$domain" "$config"
+    configure_hosts "$config"
+}
+
+setup_entra_auth() {
+    local account="$1"
+    local config="$2"
+    local account_dir="$WORKSPACE_ROOT/$account"
+
+    # Create Azure auth config directory
+    mkdir -p "$account_dir/.azure"
+
+    # Generate settings file for VS Code SQL extension
+    local settings_file="$account_dir/.vscode/settings.json"
+    mkdir -p "$(dirname "$settings_file")"
+
+    jq -n \
+        --arg account "$account" \
+        --arg mssql_settings "$(echo "$config" | jq -r '.entra_auth.servers[] | {
+            "server": .host,
+            "authentication": {
+                "type": "azure-active-directory-default",
+                "options": {
+                    "clientId": .client_id,
+                    "tenantId": .tenant_id
+                }
+            }
+        }')" \
+        '{
+            "mssql.connections": [$mssql_settings]
+        }' > "$settings_file"
+
+    # Add workspace-specific Azure login
+    echo '
+# Azure login for SQL Server connections
+if [[ "'"$PWD"'" == "'"$account_dir"'"* ]]; then
+    az login --service-principal
+fi' >> "$account_dir/.envrc"
+}
+
+configure_kerberos() {
+    local account_dir="$1"
+    local domain="$2"
+    local config="$3"
+
+    local krb5_conf="$account_dir/.krb5.conf"
+
+    # Create Kerberos config
+    cat > "$krb5_conf" << EOF
+[libdefaults]
+    default_realm = ${domain}
+    dns_lookup_realm = false
+    dns_lookup_kdc = false
+    rdns = false
+    ticket_lifetime = 24h
+    forwardable = true
+    proxiable = true
+
+[realms]
+    ${domain} = {
+EOF
+
+    # Add each server as a KDC
+    echo "$config" | jq -r '.servers[].host' | while read -r server; do
+        echo "        kdc = ${server}" >> "$krb5_conf"
+        echo "        admin_server = ${server}" >> "$krb5_conf"
+    done
+
+    # Complete the configuration
+    cat >> "$krb5_conf" << EOF
+    }
+
+[domain_realm]
+    .${domain,,} = ${domain}
+    ${domain,,} = ${domain}
+EOF
+
+    # Copy to system location when in account directory
+    echo "
+# Update Kerberos config based on workspace
+if [[ \"\$PWD\" == \"$account_dir\"* ]] && [[ -f \"$krb5_conf\" ]]; then
+    sudo cp \"$krb5_conf\" /etc/krb5.conf
+fi" >> ~/.bashrc
+}
+
+configure_hosts() {
+    local config="$1"
+    local hosts_entries=""
+
+    # Generate hosts entries
+    while IFS= read -r entry; do
+        local host
+        local ip
+        host=$(echo "$entry" | jq -r '.host')
+        ip=$(echo "$entry" | jq -r '.ip')
+        hosts_entries+="$ip $host\n"
+    done < <(echo "$config" | jq -c '.servers[]')
+
+    # Add to /etc/hosts if not already present
+    if [[ -n "$hosts_entries" ]]; then
+        echo -e "$hosts_entries" | while read -r entry; do
+            if ! grep -q "$entry" /etc/hosts; then
+                echo "$entry" | sudo tee -a /etc/hosts > /dev/null
+            fi
+        done
+    fi
+}
