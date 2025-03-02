@@ -276,12 +276,12 @@ export AWS_DEFAULT_REGION=us-east-2
 EOF
 
     # Add to bashrc if not present
-    if ! grep -q "source.*$workspace_env" ~/.bashrc; then
+    if ! grep -q "source.*$workspace_env" ~/.zshrc; then
         echo "
 # Source LeadingEdje workspace environment
 if [[ \"\$PWD\" == \"$account_dir\"* ]] && [[ -f \"$workspace_env\" ]]; then
     source \"$workspace_env\"
-fi" >> ~/.bashrc
+fi" >> ~/.zshrc
     fi
 
     log_success "AWS configuration completed for $account_dir"
@@ -417,7 +417,7 @@ EOF
 # Update Kerberos config based on workspace
 if [[ \"\$PWD\" == \"$account_dir\"* ]] && [[ -f \"$krb5_conf\" ]]; then
     sudo cp \"$krb5_conf\" /etc/krb5.conf
-fi" >> ~/.bashrc
+fi" >> ~/.zshrc
 }
 
 configure_hosts() {
