@@ -13,6 +13,7 @@ export SCRIPTS_DIR="$DEVCONTAINER_DIR/scripts"
 export HOOKS_DIR="$DEVCONTAINER_DIR/hooks"
 
 # Source all script files
+# shellcheck disable=SC1090
 for script in "$SCRIPTS_DIR"/*.sh; do
     source "$script"
 done
@@ -23,7 +24,8 @@ main() {
     create_account_directories
     setup_vscode_workspace
     setup_account_repositories
-    
+    setup_sqlserver_auth
+
     log_success "Workspace setup complete!"
 }
 

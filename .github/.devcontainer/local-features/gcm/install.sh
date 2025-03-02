@@ -1,6 +1,7 @@
 #!/bin/bash
 
 CREDENTIAL_STORE=${CREDENTIALSTORE:-"gpg"}
+GCM_INSTALL_DIR="/usr/local/gcm"
 
 # Install common dependencies
 apt-get update
@@ -8,10 +9,11 @@ apt-get install -y curl
 
 install_gpg_dependencies() {
     apt-get install -y gpg pass gnupg2
-    
+
     # Initialize pass if not already configured
     if ! command -v pass &> /dev/null; then
-        export GNUPGHOME="$(mktemp -d)"
+        GNUPGHOME="$(mktemp -d)"
+        export GNUPGHOME
         cat >keydetails <<EOF
 %echo Generating GPG key
 Key-Type: RSA
@@ -25,7 +27,7 @@ Expire-Date: 0
 EOF
         gpg --batch --generate-key keydetails
         rm keydetails
-        
+
         gpg_id=$(gpg --list-secret-keys --keyid-format LONG | grep sec | cut -d'/' -f2 | cut -d' ' -f1)
         pass init "$gpg_id"
     fi
@@ -68,7 +70,12 @@ case $CREDENTIAL_STORE in
 esac
 
 # Install Git Credential Manager
-dotnet tool install -g git-credential-manager
+mkdir -p "$GCM_INSTALL_DIR"
+dotnet tool install --tool-path "$GCM_INSTALL_DIR" git-credential-manager
+
+# Add GCM to PATH
+echo "export PATH=\"$GCM_INSTALL_DIR:\$PATH\"" >> /etc/profile.d/gcm-path.sh
+source /etc/profile.d/gcm-path.sh
 
 # Configure GCM
 git config --global credential.credentialStore "$CREDENTIAL_STORE"
