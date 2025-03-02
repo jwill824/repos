@@ -25,7 +25,7 @@
 		"ghcr.io/eitsupi/devcontainer-features/jq-likes:2": {},
 		"olliglorioso/git-completion/git-completion": "latest",
 		"ghcr.io/jlaundry/devcontainer-features/azure-functions-core-tools:1": {},
-		"ghcr.io/jlaundry/devcontainer-features/mssql-odbc:1": {},
+		"ghcr.io/jlaundry/devcontainer-features/mssql-odbc-driver:1": {},
 		"ghcr.io/lukewiwa/features/shellcheck:0": {},
 		"./local-features/python": {
 			"versions": "3.9,3.12,3.13",
