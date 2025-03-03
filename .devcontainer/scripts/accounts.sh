@@ -265,24 +265,16 @@ configure_aws_files() {
         jq -r 'to_entries[] | select(.key != "enabled") | "\(.key) = \(.value)"' <<< "$saml_config" >> "$saml2aws_config"
     fi
 
-    # Workspace environment
-    local workspace_env="$account_dir/.workspace_env"
-    cat > "$workspace_env" << EOF
-# AWS Configuration for LeadingEdje workspace
-export AWS_SHARED_CREDENTIALS_FILE="${aws_dir}/credentials"
-export AWS_CONFIG_FILE="${aws_dir}/config"
-export SAML2AWS_CONFIGFILE="${saml2aws_config}"
-export AWS_DEFAULT_REGION=us-east-2
-EOF
+    # Create or update the .envrc file with AWS-specific configuration
+    update_envrc "$account_dir" "aws" "
+# AWS Configuration
+export AWS_SHARED_CREDENTIALS_FILE=\"${aws_dir}/credentials\"
+export AWS_CONFIG_FILE=\"${aws_dir}/config\"
+export SAML2AWS_CONFIGFILE=\"${saml2aws_config}\"
+export AWS_DEFAULT_REGION=us-east-2"
 
-    # Add to bashrc if not present
-    if ! grep -q "source.*$workspace_env" ~/.zshrc; then
-        echo "
-# Source LeadingEdje workspace environment
-if [[ \"\$PWD\" == \"$account_dir\"* ]] && [[ -f \"$workspace_env\" ]]; then
-    source \"$workspace_env\"
-fi" >> ~/.zshrc
-    fi
+    # Allow the .envrc file
+    direnv allow "$account_dir"
 
     log_success "AWS configuration completed for $account_dir"
 }
@@ -290,14 +282,20 @@ fi" >> ~/.zshrc
 setup_sqlserver_auth() {
     log_info "Setting up SQL Server authentication..."
 
+    # Check for SQL Server configurations more safely
     local accounts_with_sql
-    accounts_with_sql=$(jq -r 'to_entries[] | select(.value.sqlserver) | .key' "$DEVCONTAINER_DIR/repo_config.json")
+    accounts_with_sql=$(jq -r 'to_entries[] | select(.value.sqlserver.enabled == true) | .key' "$DEVCONTAINER_DIR/repo_config.json")
 
     if [[ -z "$accounts_with_sql" ]]; then
+        log_info "No SQL Server configurations found"
         return 0
     fi
 
-    # Install common dependencies
+    # Install common dependencies - fix the apt sources conflict
+    sudo rm -f /etc/apt/sources.list.d/azure-functions-core-tools.list
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo apt-key add -
+    curl -fsSL https://packages.microsoft.com/config/ubuntu/"$(lsb_release -rs)"/prod.list | sudo tee /etc/apt/sources.list.d/mssql-release.list
+
     sudo apt-get update && sudo apt-get install -y \
         curl \
         unixodbc-dev \
@@ -305,7 +303,7 @@ setup_sqlserver_auth() {
 
     while IFS= read -r account; do
         local config
-        config=$(jq -r ".$account.sqlserver" "$DEVCONTAINER_DIR/repo_config.json")
+        config=$(jq -r ".$account.sqlserver // empty" "$DEVCONTAINER_DIR/repo_config.json")
 
         # Setup Windows Auth if configured
         if [[ $(echo "$config" | jq -r '.windows_auth // empty') != null ]]; then
@@ -337,6 +335,15 @@ setup_windows_auth() {
 
     configure_kerberos "$account_dir" "$domain" "$config"
     configure_hosts "$config"
+
+    # Add Kerberos configuration to .envrc
+    update_envrc "$account_dir" "kerberos" "
+# Kerberos Configuration
+if [[ -f \"$account_dir/.krb5.conf\" ]]; then
+    sudo cp \"$account_dir/.krb5.conf\" /etc/krb5.conf
+fi"
+
+    log_success "Windows authentication configured for $account_dir"
 }
 
 setup_entra_auth() {
@@ -367,12 +374,14 @@ setup_entra_auth() {
             "mssql.connections": [$mssql_settings]
         }' > "$settings_file"
 
-    # Add workspace-specific Azure login
-    echo '
-# Azure login for SQL Server connections
-if [[ "'"$PWD"'" == "'"$account_dir"'"* ]]; then
+    # Add Azure configuration to .envrc
+    update_envrc "$account_dir" "azure" "
+# Azure Configuration
+if [[ -f \"$account_dir/.azure/config\" ]]; then
     az login --service-principal
-fi' >> "$account_dir/.envrc"
+fi"
+
+    log_success "Entra authentication configured for $account_dir"
 }
 
 configure_kerberos() {
@@ -380,7 +389,15 @@ configure_kerberos() {
     local domain="$2"
     local config="$3"
 
+    # Ensure domain is uppercase for Kerberos
+    domain=${domain^^}
     local krb5_conf="$account_dir/.krb5.conf"
+
+    # Validate domain
+    if [[ -z "$domain" ]] || [[ "$domain" == "NULL" ]]; then
+        log_error "Invalid domain configuration for Kerberos"
+        return 1
+    fi
 
     # Create Kerberos config
     cat > "$krb5_conf" << EOF
@@ -398,10 +415,22 @@ configure_kerberos() {
 EOF
 
     # Add each server as a KDC
-    echo "$config" | jq -r '.servers[].host' | while read -r server; do
-        echo "        kdc = ${server}" >> "$krb5_conf"
-        echo "        admin_server = ${server}" >> "$krb5_conf"
-    done
+    local servers
+    servers=$(echo "$config" | jq -r '.windows_auth.servers[]? | .host' 2>/dev/null)
+    if [[ -z "$servers" ]]; then
+        # Fallback to main servers array if windows_auth.servers is not defined
+        servers=$(echo "$config" | jq -r '.servers[]? | .host' 2>/dev/null)
+    fi
+
+    if [[ -n "$servers" ]]; then
+        while IFS= read -r server; do
+            echo "        kdc = ${server}" >> "$krb5_conf"
+            echo "        admin_server = ${server}" >> "$krb5_conf"
+        done <<< "$servers"
+    else
+        log_error "No servers configured for Kerberos"
+        return 1
+    fi
 
     # Complete the configuration
     cat >> "$krb5_conf" << EOF
@@ -412,12 +441,7 @@ EOF
     ${domain,,} = ${domain}
 EOF
 
-    # Copy to system location when in account directory
-    echo "
-# Update Kerberos config based on workspace
-if [[ \"\$PWD\" == \"$account_dir\"* ]] && [[ -f \"$krb5_conf\" ]]; then
-    sudo cp \"$krb5_conf\" /etc/krb5.conf
-fi" >> ~/.zshrc
+    log_success "Kerberos configuration created for $domain"
 }
 
 configure_hosts() {
@@ -441,4 +465,41 @@ configure_hosts() {
             fi
         done
     fi
+}
+
+# New helper function to manage .envrc contents
+update_envrc() {
+    local account_dir="$1"
+    local section="$2"
+    local content="$3"
+    local envrc_file="$account_dir/.envrc"
+
+    # Create .envrc if it doesn't exist
+    if [[ ! -f "$envrc_file" ]]; then
+        echo "# Environment configuration for $(basename "$account_dir")" > "$envrc_file"
+        echo 'export ACCOUNT_DIR="$PWD"' >> "$envrc_file"
+    fi
+
+    # Remove existing section if present
+    local start_marker="# BEGIN ${section} configuration"
+    local end_marker="# END ${section} configuration"
+    sed -i "/^${start_marker}$/,/^${end_marker}$/d" "$envrc_file"
+
+    # Add new section
+    cat >> "$envrc_file" << EOF
+
+${start_marker}
+${content}
+${end_marker}
+EOF
+
+    # Ensure direnv hook is in zshrc
+    if ! grep -q "eval \"\$(direnv hook zsh)\"" ~/.zshrc; then
+        echo '
+# Initialize direnv
+eval "$(direnv hook zsh)"' >> ~/.zshrc
+    fi
+
+    # Allow the updated .envrc
+    direnv allow "$account_dir"
 }

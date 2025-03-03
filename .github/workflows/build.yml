@@ -1,5 +1,5 @@
 name: "build"
-on: # rebuild only when devcontainer files change
+on:
   workflow_dispatch:
   pull_request:
     paths:
@@ -10,7 +10,6 @@ on: # rebuild only when devcontainer files change
     paths:
       - ".github/.devcontainer/**"
 
-# Add permissions block
 permissions:
   contents: read
   packages: write

@@ -87,18 +87,21 @@ setup_pre_commit() {
     generate_pre_commit_config "$hooks_dir" > "$repo_config_file"
 
     # Add .pre-commit-config.yaml to .gitignore if not already present
-    if ! grep -q "^\.pre-commit-config\.yaml$" "$repo_root/.gitignore" 2>/dev/null; then
-        echo ".pre-commit-config.yaml" >> "$repo_root/.gitignore"
+    local gitignore_file="$repo_root/.gitignore"
+    if [[ ! -f "$gitignore_file" ]] || ! grep -q "^\.pre-commit-config\.yaml$" "$gitignore_file"; then
+        echo ".pre-commit-config.yaml" >> "$gitignore_file"
     fi
 
     # Get unique hook types from filenames
     local hook_types
-    hook_types=$(find "$hooks_dir" -name "pre-*-*" -type f -exec basename {} \; | cut -d'-' -f1,2 | sort -u)
+    mapfile -t hook_types < <(find "$hooks_dir" -name "pre-*-*" -type f -exec basename {} \; | cut -d'-' -f1,2 | sort -u)
 
     # Install each hook type
+    cd "$repo_root" || return 1
     for hook_type in "${hook_types[@]}"; do
-        cd "$repo_root" && pre-commit install --hook-type "$hook_type"
+        pre-commit install --hook-type "$hook_type" || log_warning "Failed to install hook type: $hook_type"
     done
+    cd - > /dev/null || return 1
 
     log_success "Pre-commit hooks configured for $repo_root"
 }
@@ -119,8 +122,10 @@ configure_git_auth() {
         return
     fi
 
-    # Use Git Credential Manager for the repository
+    # Set Git Credential Manager as the credential helper
     git -C "$repo_root" config --local credential.helper manager
+    # Enable path-specific credentials
+    git -C "$repo_root" config --local credential.useHttpPath true
 
     # Get account's git config
     local git_config
@@ -129,10 +134,6 @@ configure_git_auth() {
         return
     fi
 
-    # Ensure credential helper is set for the repository
-    git -C "$repo_root" config --local credential.helper manager
-    git -C "$repo_root" config --local credential.useHttpPath true
-
     # Configure based on provider
     if [[ "$remote_url" =~ .*visualstudio.com.* ]] || [[ "$remote_url" =~ .*azure.com.* ]]; then
         local domain
@@ -140,52 +141,25 @@ configure_git_auth() {
         domain=$(echo "$git_config" | jq -r '.azure.domain')
         username=$(echo "$git_config" | jq -r '.azure.username')
         if [[ -n "$username" ]] && [[ -n "$domain" ]]; then
-            git -C "$repo_root" config --local "credential.https://${domain}.helper" manager
+            # For Azure DevOps, we only need to set the username
             git -C "$repo_root" config --local "credential.https://${domain}.username" "$username"
         fi
     elif [[ "$remote_url" =~ .*github.com.* ]]; then
-        local github_config
         local username
-        local org
-
-        github_config=$(echo "$git_config" | jq -r '.github')
-        username=$(echo "$github_config" | jq -r '.username')
-        org=$(echo "$remote_url" | sed -E 's#https://github.com/([^/]+)/.*#\1#')
-
+        username=$(echo "$git_config" | jq -r '.github.username')
         if [[ -n "$username" ]]; then
-            # Remove any existing credential configurations
-            git -C "$repo_root" config --local --unset-all "credential.https://github.com.username" || true
-
-            # Set new credential configurations
-            git -C "$repo_root" config --local "credential.https://github.com.helper" manager
+            # For GitHub, just set the username
             git -C "$repo_root" config --local "credential.https://github.com.username" "$username"
-
-            # Ensure the remote URL is clean
-            if [[ "$remote_url" =~ .*@github.com.* ]]; then
-                local new_url="https://github.com/${org}/${remote_url##*/}"
-                git -C "$repo_root" config remote.origin.url "$new_url"
-            fi
         fi
     elif [[ "$remote_url" =~ .*bitbucket.org.* ]]; then
-        local bitbucket_config
         local username
         local team
-
-        bitbucket_config=$(echo "$git_config" | jq -r '.bitbucket')
-        username=$(echo "$bitbucket_config" | jq -r '.username')
+        username=$(echo "$git_config" | jq -r '.bitbucket.username')
         team=$(echo "$remote_url" | sed -E 's#https://[^@]*@?bitbucket.org/([^/]+)/.*#\1#')
-
         if [[ -n "$username" ]]; then
-            # Update remote URL to include username if not present
-            if [[ ! "$remote_url" =~ .*@bitbucket.org.* ]]; then
-                local new_url="https://${username}@bitbucket.org/${team}/${remote_url##*/}"
-                git -C "$repo_root" config remote.origin.url "$new_url"
-            fi
-
-            git -C "$repo_root" config --local "credential.https://bitbucket.org.helper" manager
-            git -C "$repo_root" config --local "credential.https://bitbucket.org/$team.helper" manager
+            # For Bitbucket, we need username for both the domain and team-specific URLs
             git -C "$repo_root" config --local "credential.https://bitbucket.org.username" "$username"
-            git -C "$repo_root" config --local "credential.https://bitbucket.org/$team.username" "$username"
+            [[ -n "$team" ]] && git -C "$repo_root" config --local "credential.https://bitbucket.org/$team.username" "$username"
         fi
     fi
 
