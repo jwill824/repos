@@ -1,0 +1,18 @@
+{
+	"name": "Git Credential Manager",
+	"id": "gcm",
+	"version": "1.0.0",
+	"description": "Installs Git Credential Manager with configurable credential store",
+	"options": {
+		"credentialStore": {
+			"type": "string",
+			"enum": ["gpg", "secretservice", "cache", "plaintext"],
+			"default": "gpg",
+			"description": "Credential store to use with Git Credential Manager"
+		}
+	},
+	"installsAfter": [
+		"ghcr.io/devcontainers/features/common-utils",
+		"ghcr.io/devcontainers/features/dotnet"
+	]
+}

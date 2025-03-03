@@ -1,0 +1,11 @@
+{
+  "id": "bats",
+  "version": "1.0.0",
+  "name": "Bats",
+  "documentationURL": "https://github.com/bats-core/bats-core",
+  "description": "Installs Bats testing framework with support and assert libraries",
+  "containerEnv": {
+    "BATS_HELPER_PATH": "/usr/local/lib/bats/helpers",
+    "PATH": "/usr/local/lib/bats/helpers:${PATH}"
+  }
+}

@@ -1,74 +1,88 @@
 {
-    "default": {
-      "git": {
-        "user": {
-          "email": "jeffwilliams824@gmail.com",
-          "name": "Jeff Williams"
-        }
+  "default": {
+    "git": {
+      "user": {
+        "email": "default@example.com",
+        "name": "Default User"
+      }
+    }
+  },
+  "organization1": {
+    "git": {
+      "user": {
+        "email": "user@organization1.com",
+        "name": "Organization User"
+      },
+      "azure": {
+        "domain": "organization1.visualstudio.com",
+        "username": "user@organization1.com"
       }
     },
-    "leaf": {
-      "git": {
-        "user": {
-          "email": "jeff.williams@leafhome.com",
-          "name": "Jeff Williams"
-        },
-        "azure": {
-          "domain": "leaffitler.visualstudio.com",
-          "username": "jeff.williams@leafhome.com"
+    "sqlserver": {
+      "enabled": true,
+      "domain": "NOCLOGS.LOCAL",
+      "servers": [
+        {
+          "host": "hostname.NOCLOGS.local",
+          "ip": "10.0.0.10"
         }
+      ]
+    }
+  },
+  "organization2": {
+    "git": {
+      "user": {
+        "email": "user@organization2.com",
+        "name": "Organization User"
+      },
+      "github": {
+        "organizations": [
+          "Org2Team"
+        ],
+        "username": "user@organization2.com"
+      },
+      "bitbucket": {
+        "teams": [
+          "org2team"
+        ],
+        "username": "username123"
       }
     },
-    "leadingedje": {
-      "git": {
-        "user": {
-          "email": "jeff.williams@leadingedje.com",
-          "name": "Jeff Williams"
-        },
-        "github": {
-          "organizations": ["LeadingEDJE"],
-          "username": "jeff.williams@leadingedje.com"
-        },
-        "bitbucket": {
-          "teams": ["leappdev"],
-          "username": "jeffwilliams1"
+    "aws": {
+      "enabled": true,
+      "region": "us-east-1",
+      "profiles": {
+        "development": {
+          "role_arn": "arn:aws:iam::123456789012:role/DevRole",
+          "output": "json",
+          "source_profile": "org-sso"
         }
       },
-      "aws": {
+      "saml": {
         "enabled": true,
-        "region": "us-east-2",
-        "profiles": {
-          "development": {
-            "role_arn": "arn:aws:iam::702328517568:role/DevOpsRole",
-            "output": "json",
-            "source_profile": "le-sso"
-          }
-        },
-        "saml": {
-          "enabled": true,
-          "app_id": "305541016011",
-          "url": "https://accounts.google.com/o/saml2/initsso?idpid=C035husfp&spid=305541016011",
-          "username": "jeff.williams@leadingedje.com",
-          "provider": "GoogleApps",
-          "mfa": "Auto",
-          "skip_verify": false,
-          "timeout": 0,
-          "aws_urn": "urn:amazon:webservices",
-          "aws_session_duration": 43200,
-          "aws_profile": "le-sso"
-        }
+        "app_id": "123456789012",
+        "url": "https://sso.example.com/saml2/init",
+        "username": "user@organization2.com",
+        "provider": "SSOProvider",
+        "mfa": "Auto",
+        "skip_verify": false,
+        "timeout": 0,
+        "aws_urn": "urn:amazon:webservices",
+        "aws_session_duration": 43200,
+        "aws_profile": "org-sso"
       }
-    },
-    "personal": {
-      "git": {
-        "user": {
-          "email": "jeffwilliams824@gmail.com",
-          "name": "Jeff Williams"
-        },
-        "github": {
-          "type": "user",
-          "username": "jeffwilliams824@gmail.com"
-        }
+    }
+  },
+  "personal": {
+    "git": {
+      "user": {
+        "email": "personal@example.com",
+        "name": "Personal User"
+      },
+      "github": {
+        "type": "user",
+        "username": "personal@example.com"
       }
     }
   }
+}

@@ -1,0 +1,24 @@
+{
+  "id": "pester",
+  "version": "1.0.0",
+  "name": "Pester",
+  "documentationURL": "https://pester.dev",
+  "description": "Installs Pester testing framework for PowerShell",
+  "options": {
+    "version": {
+      "type": "string",
+      "default": "latest",
+      "description": "Select version of Pester to install"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "pspester.pester-test"
+      ]
+    }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/powershell"
+  ]
+}

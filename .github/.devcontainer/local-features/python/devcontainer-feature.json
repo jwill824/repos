@@ -1,0 +1,55 @@
+{
+  "id": "python",
+  "version": "1.0.0",
+  "name": "Python",
+  "documentationURL": "",
+  "description": "Installs Python via pyenv with optional Poetry installation",
+  "options": {
+    "versions": {
+      "type": "string",
+      "proposals": [
+        "3.12",
+        "3.11",
+        "3.10",
+        "3.9",
+        "3.8"
+      ],
+      "default": "3.12",
+      "description": "Comma-separated list of Python versions to install via pyenv"
+    },
+    "installPoetry": {
+      "type": "boolean",
+      "default": true,
+      "description": "Install Poetry package manager"
+    },
+    "toolsToInstall": {
+      "type": "string",
+      "default": "ruff,uv,pytest",
+      "description": "Comma-separated list of additional tools to install"
+    }
+  },
+  "containerEnv": {
+    "PYENV_ROOT": "/usr/local/pyenv",
+    "POETRY_HOME": "/usr/local/poetry",
+    "PATH": "/usr/local/pyenv/bin:/usr/local/pyenv/shims:/usr/local/poetry/bin:${PATH}"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/python/current/bin/python",
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.black-formatter"
+        }
+      }
+    }
+  },
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/common-utils",
+    "ghcr.io/devcontainers/features/oryx"
+  ]
+}

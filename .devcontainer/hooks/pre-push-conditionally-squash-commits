@@ -21,14 +21,14 @@ fi
 # Returns "manual" if message exists before [squash]
 # Returns "ai" if only [squash] exists
 should_squash() {
-    commit_messages=$(git log $default_branch..$current_branch --pretty=%B)
+    commit_messages=$(git log $default_branch.."$current_branch" --pretty=%B)
     for msg in $commit_messages; do
         if [[ $msg =~ \[squash\] ]]; then
             # Check if there's any text before [squash]
             message_before=$(echo "$msg" | sed 's/\[squash\].*//' | tr -d '[:space:]')
             if [ -n "$message_before" ]; then
                 # There's a message before [squash]
-                echo "manual:$(echo "$msg" | sed 's/\[squash\].*//')"
+                echo "manual:${msg//\[squash\].*/}"
                 return 0
             else
                 # Only [squash] found
@@ -43,23 +43,23 @@ should_squash() {
 # Check if we're on a feature branch
 if [[ $current_branch != master && $current_branch != development ]]; then
     echo "On feature branch: $current_branch"
-    
+
     # Check if there are any commits to potentially squash
-    commit_count=$(git rev-list --count $default_branch..$current_branch)
-    
+    commit_count=$(git rev-list --count $default_branch.."$current_branch")
+
     # Get squash type and potential message
     squash_result=$(should_squash)
     squash_status=$?
-    
+
     if [ "$commit_count" -gt 1 ] && [ $squash_status -eq 0 ]; then
         echo "Multiple commits detected ($commit_count commits) and squash tag found. Preparing to squash..."
-        
+
         # Get the merge base
         merge_base=$(git merge-base $default_branch HEAD)
-        
+
         # Perform the squash
         git reset --soft "$merge_base"
-        
+
         # Handle manual vs AI message
         if [[ $squash_result == manual:* ]]; then
             # Use the message that was before [squash]
@@ -71,29 +71,27 @@ if [[ $current_branch != master && $current_branch != development ]]; then
             echo "Generating AI commit message..."
             temp_msg_file=$(mktemp)
             PYTHON_PATH="/workspaces/repos/.venv/bin/python3"
-            
-            $PYTHON_PATH /workspaces/repos/.devcontainer/prepare-commit-msg.py "$temp_msg_file"
-            
-            if [ $? -eq 0 ] && [ -s "$temp_msg_file" ]; then
+
+            if ! $PYTHON_PATH /workspaces/repos/.devcontainer/prepare-commit-msg.py "$temp_msg_file" && [ -s "$temp_msg_file" ]; then
                 echo "Using AI-generated commit message"
-                cat "$temp_msg_file" | git commit -F -
+                git commit -F - < "$temp_msg_file"
                 rm "$temp_msg_file"
             else
                 echo "AI message generation failed, falling back to default construction"
                 rm "$temp_msg_file"
-                
+
                 # Fallback to combining commit messages
-                commit_messages=$(git log $default_branch..$current_branch --pretty=format:"%s" | sort -r)
+                commit_messages=$(git log $default_branch.."$current_branch" --pretty=format:"%s" | sort -r)
                 commit_type=$(echo "$commit_messages" | head -n1 | grep -o '^[a-z]\+:' || echo "feat:")
                 consolidated_msg=$(echo "$commit_messages" | sed -e 's/^[a-z]\+: //' -e 's/\[squash\]//g' | tr '\n' ';' | sed 's/;/, /g' | sed 's/, $//')
                 echo -e "${commit_type} ${consolidated_msg}\n\nSquashed ${commit_count} commits from '${current_branch}'" | git commit -F -
             fi
         fi
-        
+
         # Force push the squashed commit
         echo "Force pushing squashed commit..."
-        git push origin $current_branch --force-with-lease
-        
+        git push origin "$current_branch" --force-with-lease
+
         echo "Successfully squashed and pushed commits!"
         exit 0
     else

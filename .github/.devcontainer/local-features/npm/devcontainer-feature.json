@@ -1,0 +1,20 @@
+{
+	"id": "npm",
+	"version": "1.0.0",
+	"name": "Node Package Manager",
+	"documentationURL": "https://docs.npmjs.com/",
+	"description": "Installs packages using npm.",
+	"options": {
+		"packages": {
+			"type": "string",
+			"description": "A comma-separated list of packages to install.",
+			"default": ""
+		}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": ["christian-kohler.npm-intellisense"]
+		}
+	},
+	"installsAfter": ["ghcr.io/devcontainers/features/node"]
+}

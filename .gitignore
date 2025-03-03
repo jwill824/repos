@@ -11,17 +11,15 @@
 .devcontainer/*
 !.devcontainer/devcontainer.json
 !.devcontainer/setup.sh
-!.devcontainer/commit-msg
-!.devcontainer/pre-push
-!.devcontainer/prepare-commit-msg
-!.devcontainer/prepare-commit-msg.py
-!.devcontainer/.env.example
-!.devcontainer/git-new-branch.sh
 !.devcontainer/repo_config.example.json
 !.devcontainer/scripts/*
 !.devcontainer/hooks/*
 
 !.vscode
+!.github
+
+!commitlint.config.js
 
 # Re-ignore any potential .git directories
 **/.git
+.pre-commit-config.yaml

@@ -1,28 +1,31 @@
 #!/bin/bash
 
+# Logging
+log_info() { echo "ℹ️ $*"; }
+log_success() { echo "✓ $*"; }
+log_warning() { echo "⚠️ $*"; }
+log_error() { echo "❌ $*" >&2; }
+
 # Constants
 export WORKSPACE_ROOT="/workspaces/repos"
 export DEVCONTAINER_DIR="$WORKSPACE_ROOT/.devcontainer"
 export SCRIPTS_DIR="$DEVCONTAINER_DIR/scripts"
 export HOOKS_DIR="$DEVCONTAINER_DIR/hooks"
-export VENV_PATH="$WORKSPACE_ROOT/.venv"
 
 # Source all script files
+# shellcheck disable=SC1090
 for script in "$SCRIPTS_DIR"/*.sh; do
     source "$script"
 done
 
 # Main execution
 main() {
-    validate_requirements
-    setup_environment
-    setup_bashrc
     setup_workspace
     create_account_directories
     setup_vscode_workspace
     setup_account_repositories
-    setup_dotfiles_test_environment
-    
+    setup_sqlserver_auth
+
     log_success "Workspace setup complete!"
 }
 
